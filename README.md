@@ -110,7 +110,6 @@ yay -S --needed visual-studio-code-bin yandex-music incy-bin
 
 Вручную:
 - **Happ** — пакет `Happ.linux.x64.pkg.tar.zst` с сайта Happ: `sudo pacman -U ./Happ.linux.x64.pkg.tar.zst`;
-- **Claude Code** — `curl -fsSL https://claude.ai/install.sh | bash`;
 - **AppImage-программы** (deckcraft, effectcraft, filmcraft, gridcraft, lightcraft, pdfcraft, photocraft,
   wordcraft) — скачать в `~/Applications`.
 
