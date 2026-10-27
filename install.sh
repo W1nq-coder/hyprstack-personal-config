@@ -37,7 +37,7 @@ files() { grep -v -E '^(#|$)' "$REPO/files.txt"; }
 [[ -d $INSTALLED ]] || { echo "HyperStack не найден в $INSTALLED. Сначала установите его." >&2; exit 1; }
 
 say "Пакеты"
-need=(whisper-cpp ggml-vulkan wtype wl-clipboard pipewire jq ffmpeg curl hyprsunset mpv wf-recorder dolphin)
+need=(whisper-cpp ggml-vulkan wtype wl-clipboard pipewire jq ffmpeg curl hyprsunset mpv wf-recorder dolphin github-cli)
 missing=()
 for pkg in "${need[@]}"; do pacman -Q "$pkg" >/dev/null 2>&1 || missing+=("$pkg"); done
 if ((${#missing[@]})); then
