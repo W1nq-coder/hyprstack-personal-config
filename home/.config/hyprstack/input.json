@@ -1,0 +1,15 @@
+{
+    "gestures": {
+        "distance": 950,
+        "invert": false
+    },
+    "touchpad": {
+        "all": {
+            "scroll_factor": 1.0,
+            "scroll_method": "2fg",
+            "sensitivity": 0.1
+        },
+        "auto_disable": true
+    },
+    "version": 1
+}

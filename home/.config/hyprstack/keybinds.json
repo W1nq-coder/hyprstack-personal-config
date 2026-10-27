@@ -1,0 +1,31 @@
+{
+    "custom": [
+        {
+            "chord": "SUPER + CTRL + ALT + F12",
+            "command": "notify-send \"HyperStack\" \"Тестовое сочетание сработало\"",
+            "icon": "kitty",
+            "id": "ctest1",
+            "name": "Тест"
+        },
+        {
+            "chord": "CTRL + SHIFT + F",
+            "command": "dolphin",
+            "icon": "org.kde.dolphin",
+            "id": "cmvqldicbit3b",
+            "name": "Dolphin"
+        },
+        {
+            "chord": "SUPER + SHIFT + Bracketleft",
+            "command": "/opt/happ/bin/Happ",
+            "icon": "happ",
+            "id": "cmvqljcacrsau",
+            "name": "Happ"
+        }
+    ],
+    "slots": {
+        "\tShell: Open overview\tSUPER|o": [
+            "CTRL + O"
+        ]
+    },
+    "version": 2
+}
