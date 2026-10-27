@@ -81,6 +81,18 @@ QtObject {
             description: String(Tr.language).startsWith("ru") ? "Скорость, прокрутка, касания, жесты" : "Speed, scrolling, tapping, gestures",
             category: "shell"
         },
+        {
+            label: String(Tr.language).startsWith("ru") ? "Голосовой ввод" : "Voice input",
+            icon: "mic",
+            description: String(Tr.language).startsWith("ru") ? "Режим, язык, модель, микрофон" : "Mode, language, model, microphone",
+            category: "shell"
+        },
+        {
+            label: String(Tr.language).startsWith("ru") ? "Ночной режим" : "Night light",
+            icon: "nightlight",
+            description: String(Tr.language).startsWith("ru") ? "Тёплый оттенок экрана, расписание" : "Warm screen tint, schedule",
+            category: "shell"
+        },
 
         // About
         {

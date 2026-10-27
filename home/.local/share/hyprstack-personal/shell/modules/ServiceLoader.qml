@@ -14,6 +14,7 @@ Scope {
         WindowSwitcher;
         Brightness;
         InputSettings; // watches mouse hotplug (personal overlay)
+        Dictation; // voice input state (personal overlay)
         Weather.reload();
         ThemeSync.requestSync();
 

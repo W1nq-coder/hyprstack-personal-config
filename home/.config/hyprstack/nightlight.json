@@ -1,0 +1,9 @@
+{
+    "enabled": false,
+    "temperature": 4000,
+    "schedule": {
+        "enabled": true,
+        "from": "22:00",
+        "to": "07:00"
+    }
+}

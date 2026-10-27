@@ -1,13 +1,14 @@
 {
     "gestures": {
-        "distance": 950,
+        "distance": 800,
         "invert": false
     },
     "touchpad": {
         "all": {
-            "scroll_factor": 1.0,
+            "natural_scroll": true,
+            "scroll_factor": 1.05,
             "scroll_method": "2fg",
-            "sensitivity": 0.1
+            "sensitivity": 0.4
         },
         "auto_disable": true
     },

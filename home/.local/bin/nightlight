@@ -1,0 +1,194 @@
+#!/usr/bin/env python3
+"""Ночной режим для Hyprstack: тёплый оттенок экрана через hyprsunset.
+
+Использование:
+  nightlight status                  состояние в JSON (для оболочки)
+  nightlight on | off | toggle       включить / выключить
+  nightlight warmer | cooler         теплее / холоднее на 500 K (warmer включает режим)
+  nightlight set-temperature K       теплота 2500–6000 K (меньше — теплее)
+  nightlight schedule on | off       расписание вкл/выкл
+  nightlight set-schedule ЧЧ:ММ ЧЧ:ММ  время включения и выключения
+  nightlight apply | tick            привести экран к настройкам (вход в систему, таймер)
+Флаг --notify показывает уведомление (для сочетаний клавиш).
+
+Настройки: ~/.config/hyprstack/nightlight.json. Работающий режим — служба
+systemd --user «hyprstack-nightlight» (hyprsunset); при выключении она
+останавливается и цвета возвращаются к обычным.
+"""
+import fcntl
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+from datetime import datetime
+from pathlib import Path
+
+CONFIG = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "hyprstack" / "nightlight.json"
+STATE = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state") / "hyprstack"
+PHASE = STATE / "nightlight-phase"
+LOCK = STATE / "nightlight.lock"
+UNIT = "hyprstack-nightlight"
+MIN_T, MAX_T, STEP = 2500, 6000, 500
+DEFAULTS = {"enabled": False, "temperature": 4000,
+            "schedule": {"enabled": False, "from": "21:00", "to": "07:00"}}
+TIME = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
+
+
+def load():
+    data = json.loads(json.dumps(DEFAULTS))
+    try:
+        stored = json.loads(CONFIG.read_text())
+    except (OSError, ValueError):
+        stored = {}
+    if isinstance(stored, dict):
+        if isinstance(stored.get("enabled"), bool):
+            data["enabled"] = stored["enabled"]
+        if isinstance(stored.get("temperature"), int):
+            data["temperature"] = clamp(stored["temperature"])
+        schedule = stored.get("schedule")
+        if isinstance(schedule, dict):
+            if isinstance(schedule.get("enabled"), bool):
+                data["schedule"]["enabled"] = schedule["enabled"]
+            for key in ("from", "to"):
+                if isinstance(schedule.get(key), str) and TIME.match(schedule[key]):
+                    data["schedule"][key] = schedule[key]
+    return data
+
+
+def save(data):
+    CONFIG.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix=".nightlight.", dir=CONFIG.parent)
+    with os.fdopen(fd, "w") as stream:
+        json.dump(data, stream, indent=4, ensure_ascii=False)
+        stream.write("\n")
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, CONFIG)
+
+
+def clamp(value):
+    return max(MIN_T, min(MAX_T, int(value)))
+
+
+def minutes(text):
+    hours, mins = text.split(":")
+    return int(hours) * 60 + int(mins)
+
+
+def night_now(schedule):
+    now = datetime.now()
+    current = now.hour * 60 + now.minute
+    start, end = minutes(schedule["from"]), minutes(schedule["to"])
+    if start == end:
+        return False
+    if start < end:
+        return start <= current < end
+    return current >= start or current < end
+
+
+def run(command, **kwargs):
+    return subprocess.run(command, capture_output=True, text=True, timeout=10, **kwargs)
+
+
+def unit_active():
+    return run(["systemctl", "--user", "is-active", "--quiet", UNIT]).returncode == 0
+
+
+def start_unit(temperature):
+    run(["systemctl", "--user", "reset-failed", UNIT])
+    run(["systemd-run", "--user", "--quiet", "--collect", "--unit=" + UNIT,
+         "--description=Hyprstack night light (hyprsunset)",
+         "hyprsunset", "-t", str(temperature)])
+
+
+def sync(data):
+    """Make the screen match the settings."""
+    if not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+        return  # Hyprland is not running: the next login applies the settings.
+    if data["enabled"]:
+        if unit_active():
+            ok = run(["hyprctl", "hyprsunset", "temperature", str(data["temperature"])]).stdout.strip() == "ok"
+            if ok:
+                return
+            run(["systemctl", "--user", "stop", UNIT])
+        start_unit(data["temperature"])
+    elif unit_active():
+        run(["systemctl", "--user", "stop", UNIT])
+
+
+def follow_schedule(data, force=False):
+    """At the schedule start/end switch the mode, like phones do.
+    Between those moments a manual switch is kept."""
+    if not data["schedule"]["enabled"]:
+        return
+    phase = "night" if night_now(data["schedule"]) else "day"
+    try:
+        last = PHASE.read_text().strip()
+    except OSError:
+        last = ""
+    if force or phase != last:
+        data["enabled"] = phase == "night"
+        PHASE.write_text(phase)
+
+
+def notify(data):
+    text = f"Включён · {data['temperature']} K" if data["enabled"] else "Выключен"
+    subprocess.Popen(["notify-send", "-a", "Ночной режим", "-i", "night-light",
+                      "-h", "string:x-canonical-private-synchronous:hyprstack-nightlight",
+                      "-t", "1500", "Ночной режим", text],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def status(data):
+    print(json.dumps({**data, "active": unit_active(), "min": MIN_T, "max": MAX_T}, ensure_ascii=False))
+
+
+def main(argv):
+    show = "--notify" in argv
+    args = [a for a in argv if a != "--notify"]
+    if not args:
+        print(__doc__.strip(), file=sys.stderr)
+        return 2
+    command, rest = args[0], args[1:]
+    STATE.mkdir(parents=True, exist_ok=True)
+    with LOCK.open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        data = load()
+        if command == "status":
+            status(data)
+            return 0
+        if command == "on":
+            data["enabled"] = True
+        elif command == "off":
+            data["enabled"] = False
+        elif command == "toggle":
+            data["enabled"] = not data["enabled"]
+        elif command in ("warmer", "cooler"):
+            delta = -STEP if command == "warmer" else STEP
+            if command == "warmer" and not data["enabled"]:
+                data["enabled"] = True  # first press just turns it on
+            else:
+                data["temperature"] = clamp(data["temperature"] + delta)
+        elif command == "set-temperature" and len(rest) == 1 and rest[0].isdigit():
+            data["temperature"] = clamp(int(rest[0]))
+        elif command == "schedule" and rest in (["on"], ["off"]):
+            data["schedule"]["enabled"] = rest[0] == "on"
+            follow_schedule(data, force=True)
+        elif command == "set-schedule" and len(rest) == 2 and all(TIME.match(t) for t in rest):
+            data["schedule"]["from"], data["schedule"]["to"] = rest
+            follow_schedule(data, force=True)
+        elif command in ("apply", "tick"):
+            follow_schedule(data)
+        else:
+            print("Неизвестная команда или неверные аргументы: " + " ".join(args), file=sys.stderr)
+            return 2
+        save(data)
+        sync(data)
+        if show:
+            notify(data)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

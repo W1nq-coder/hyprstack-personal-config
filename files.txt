@@ -1,0 +1,57 @@
+# Файлы доработок относительно домашнего каталога (~). Их собирает collect.sh и раскладывает install.sh.
+
+# Настройки Hyprland и оболочки
+.config/hyprstack/local.lua
+.config/hyprstack/hypr-user.lua
+.config/hyprstack/monitors.lua
+.config/hypr/display-tuning.lua
+.config/hyprstack/hypr-vars.lua
+.config/hyprstack/keybinds-ui.lua
+.config/hyprstack/keybinds.json
+.config/hyprstack/input-ui.lua
+.config/hyprstack/input.json
+.config/hyprstack/nightlight.json
+.config/hyprstack-dictation/config
+
+# Службы systemd --user
+.config/systemd/user/hyprstack.service
+.config/systemd/user/hyprstack.service.d/10-autostart.conf
+.config/systemd/user/hyprstack.service.d/20-personal-shell.conf
+.config/systemd/user/hyprstack-session.service.d/10-personal-shell.conf
+.config/systemd/user/hyprstack-nightlight-schedule.service
+.config/systemd/user/hyprstack-nightlight-schedule.timer
+
+# Скрипты и звуки
+.local/bin/dictation
+.local/bin/caelestia-session-start
+.local/bin/nightlight
+.local/share/hyprstack-dictation/sounds/start.wav
+.local/share/hyprstack-dictation/sounds/done.wav
+.local/share/hyprstack-dictation/sounds/error.wav
+
+# Личная копия оболочки: только изменённые и новые файлы, остальное — ссылки на установленную
+.local/share/hyprstack-personal/shell/shell.qml
+.local/share/hyprstack-personal/shell/assets/brightness.py
+.local/share/hyprstack-personal/shell/assets/hyprland/dimming.lua
+.local/share/hyprstack-personal/shell/modules/ServiceLoader.qml
+.local/share/hyprstack-personal/shell/modules/DictationOverlay.qml
+.local/share/hyprstack-personal/shell/modules/RecordingIndicator.qml
+.local/share/hyprstack-personal/shell/modules/osd/Content.qml
+.local/share/hyprstack-personal/shell/modules/nexus/PageRegistry.qml
+.local/share/hyprstack-personal/shell/modules/nexus/PageCompRegistry.qml
+.local/share/hyprstack-personal/shell/modules/nexus/pages/KeybindsPage.qml
+.local/share/hyprstack-personal/shell/modules/nexus/pages/InputPage.qml
+.local/share/hyprstack-personal/shell/modules/nexus/pages/DictationPage.qml
+.local/share/hyprstack-personal/shell/modules/nexus/pages/NightLightPage.qml
+.local/share/hyprstack-personal/shell/modules/utilities/cards/Toggles.qml
+.local/share/hyprstack-personal/shell/modules/utilities/cards/RecordingList.qml
+.local/share/hyprstack-personal/shell/services/Brightness.qml
+.local/share/hyprstack-personal/shell/services/Keybinds.qml
+.local/share/hyprstack-personal/shell/services/Keybinds.js
+.local/share/hyprstack-personal/shell/services/InputSettings.qml
+.local/share/hyprstack-personal/shell/services/Dictation.qml
+.local/share/hyprstack-personal/shell/services/NightLight.qml
+.local/share/hyprstack-personal/shell/scripts/keybinds-apply.py
+.local/share/hyprstack-personal/shell/scripts/keybinds-apps.py
+.local/share/hyprstack-personal/shell/scripts/input-apply.py
+.local/share/hyprstack-personal/shell/scripts/input-devices.py

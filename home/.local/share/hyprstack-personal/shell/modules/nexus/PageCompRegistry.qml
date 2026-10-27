@@ -187,6 +187,22 @@ QtObject {
             }
         },
 
+        Component {
+            StackPage {
+                Component {
+                    DictationPage {}
+                }
+            }
+        },
+
+        Component {
+            StackPage {
+                Component {
+                    NightLightPage {}
+                }
+            }
+        },
+
         // About
         Component {
             StackPage {

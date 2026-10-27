@@ -1,0 +1,6 @@
+[Unit]
+Description=Hyprstack night light: follow the schedule
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/nightlight tick

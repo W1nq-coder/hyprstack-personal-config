@@ -1,0 +1,403 @@
+#!/usr/bin/env bash
+# Голосовой ввод для Hyprstack: запись с микрофона -> whisper.cpp (локально) -> текст в активное окно.
+#
+# Использование:
+#   dictation press | release    — из бинда Hyprland; что делать, решает режим MODE из настроек
+#   dictation toggle | start | stop
+#   dictation config             — настройки и списки моделей/микрофонов в JSON (для страницы настроек)
+#   dictation set КЛЮЧ ЗНАЧЕНИЕ  — изменить настройку: MODE, LANGUAGE, MODEL, SOURCE, SOUNDS
+#   dictation status | sources | server-stop | file ЗАПИСЬ
+#
+# Настройки: ~/.config/hyprstack-dictation/config (читаются при каждом нажатии).
+# Всё распознавание локальное: whisper-server слушает только 127.0.0.1.
+set -uo pipefail
+
+SELF=$(readlink -f "${BASH_SOURCE[0]}")
+CONFIG=${DICTATION_CONFIG:-${XDG_CONFIG_HOME:-$HOME/.config}/hyprstack-dictation/config}
+MODELS_DIR=${XDG_DATA_HOME:-$HOME/.local/share}/whisper-models
+RUN=${XDG_RUNTIME_DIR:-/run/user/$UID}/hyprstack-dictation
+SHELL_DIR=${HYPRSTACK_SHELL_DIR:-${XDG_DATA_HOME:-$HOME/.local/share}/hyprstack-personal/shell}
+SOUND_DIR=${XDG_DATA_HOME:-$HOME/.local/share}/hyprstack-dictation/sounds
+SERVER_UNIT=hyprstack-dictation-whisper
+IDLE_UNIT=hyprstack-dictation-idle
+
+# Значения по умолчанию; переопределяются конфигом.
+MODE="toggle"         # toggle — нажать/нажать, hold — удерживать и говорить
+SOURCE=""             # node.name микрофона; пусто — системный по умолчанию
+MODEL="$MODELS_DIR/ggml-large-v3-turbo-q5_0.bin"
+LANGUAGE="ru"         # ru | en | auto
+PROMPT=""
+SOUNDS=1
+SOUND_VOLUME=0.6     # громкость сигналов, 0.1–1.0
+USE_GPU=1
+THREADS=8
+IDLE_TIMEOUT=180
+MAX_SECONDS=120
+INSERT_METHOD="auto"  # auto | wtype | clipboard
+PORT=8178
+# shellcheck source=/dev/null
+[[ -r $CONFIG ]] && source "$CONFIG"
+
+mkdir -p "$RUN" && chmod 700 "$RUN"
+WAV=$RUN/record.wav
+REC_PID=$RUN/recorder.pid
+TIMER_PID=$RUN/timer.pid
+STATE=$RUN/state.json
+USED=$RUN/last-used
+SERVER_SIG=$RUN/server.sig
+LOCK=$RUN/lock
+
+log() { printf '%s %s\n' "$(date +%T)" "$*" >>"$RUN/dictation.log"; }
+
+# Состояние для индикатора оболочки: idle | recording | transcribing | error.
+set_state() {
+    jq -nc --arg s "$1" --arg m "${2:-}" --argjson t "$(date +%s%3N)" \
+        '{state: $s, message: $m, since: $t}' >"$STATE.tmp" && mv -f "$STATE.tmp" "$STATE"
+    # Подтолкнуть оболочку перечитать файл (она и сама следит за ним).
+    qs -p "$SHELL_DIR" ipc call dictation refresh </dev/null >/dev/null 2>&1 9>&- &
+}
+
+play() {
+    [[ $SOUNDS == 1 && -r $SOUND_DIR/$1.wav ]] || return 0
+    pw-play --volume "$SOUND_VOLUME" "$SOUND_DIR/$1.wav" </dev/null >/dev/null 2>&1 9>&- &
+}
+
+fail() {
+    log "error: $1"
+    set_state error "$1"
+    play error
+    rm -f "$WAV"
+    exit 1
+}
+
+state() { jq -r '.state // "idle"' "$STATE" 2>/dev/null || echo idle; }
+
+recording() { [[ -f $REC_PID ]] && kill -0 "$(<"$REC_PID")" 2>/dev/null; }
+
+# ---------- микрофон ----------
+
+sources_json() {
+    pw-dump 2>/dev/null | jq -c '[.[] | select(.type == "PipeWire:Interface:Node"
+        and (.info.props["media.class"] // "" | startswith("Audio/Source")))
+        | {name: .info.props["node.name"], description: (.info.props["node.description"] // .info.props["node.name"])}]'
+}
+
+default_source() {
+    wpctl inspect @DEFAULT_AUDIO_SOURCE@ 2>/dev/null | sed -nE 's/.*node\.name = "(.*)"/\1/p' | head -n1
+}
+
+source_node_id() {
+    pw-dump 2>/dev/null | jq -r --arg n "$SOURCE" \
+        'first(.[] | select(.type == "PipeWire:Interface:Node" and .info.props["node.name"] == $n
+               and (.info.props["media.class"] // "" | startswith("Audio/Source")))) | .id // empty'
+}
+
+check_mic() {
+    local id
+    if [[ -n $SOURCE ]]; then
+        id=$(source_node_id)
+        [[ -n $id ]] || fail "Микрофон «$SOURCE» не найден"
+    else
+        id=@DEFAULT_AUDIO_SOURCE@
+        wpctl inspect "$id" >/dev/null 2>&1 || fail "Микрофон не найден"
+    fi
+    if wpctl get-volume "$id" 2>/dev/null | grep -q MUTED; then
+        fail "Микрофон выключен (mute)"
+    fi
+}
+
+# ---------- whisper-server ----------
+
+server_active() { systemctl --user is-active --quiet "$SERVER_UNIT"; }
+server_ready() { curl -fsS -m 1 "http://127.0.0.1:$PORT/health" 2>/dev/null | grep -q '"ok"'; }
+
+ensure_server() {
+    touch "$USED"
+    [[ -r $MODEL ]] || { log "model not found: $MODEL"; return 2; }
+    local sig="$MODEL|$USE_GPU|$THREADS"
+    # Модель или ускорение сменили в настройках: перезапустить сервер с новыми параметрами.
+    if server_active && [[ $(cat "$SERVER_SIG" 2>/dev/null) != "$sig" ]]; then
+        log "settings changed: restarting whisper-server"
+        systemctl --user stop "$SERVER_UNIT"
+    fi
+    if ! server_active; then
+        local args=(-m "$MODEL" --host 127.0.0.1 --port "$PORT" -t "$THREADS" -l auto --suppress-nst)
+        [[ $USE_GPU == 1 ]] || args+=(--no-gpu)
+        systemctl --user reset-failed "$SERVER_UNIT" 2>/dev/null
+        systemd-run --user --quiet --collect --unit="$SERVER_UNIT" \
+            --description="Whisper server for Hyprstack dictation" \
+            "$(command -v whisper-server)" "${args[@]}" 9>&- || log "systemd-run server failed"
+        printf '%s' "$sig" >"$SERVER_SIG"
+    fi
+    if ! systemctl --user is-active --quiet "$IDLE_UNIT"; then
+        systemd-run --user --quiet --collect --unit="$IDLE_UNIT" \
+            --description="Unload whisper model after idle" "$SELF" idle-watch 9>&- 2>/dev/null
+    fi
+    local i
+    for ((i = 0; i < 300; i++)); do
+        server_ready && return 0
+        server_active || { sleep 0.2; server_active || return 1; }
+        sleep 0.1
+    done
+    return 1
+}
+
+idle_watch() {
+    while sleep 15; do
+        server_active || exit 0
+        [[ $(state) == recording || $(state) == transcribing ]] && continue
+        local age=$(($(date +%s) - $(stat -c %Y "$USED" 2>/dev/null || echo 0)))
+        if ((age >= IDLE_TIMEOUT)); then
+            log "idle ${age}s: stopping whisper-server"
+            systemctl --user stop "$SERVER_UNIT"
+            exit 0
+        fi
+    done
+}
+
+# ---------- распознавание ----------
+
+# Типичные «галлюцинации» whisper на тишине и шуме.
+HALLUCINATIONS='^(продолжение следует|субтитры|спасибо за просмотр|редактор субтитров|корректор|подписывайтесь|thank you\.?|thanks for watching|you)'
+
+transcribe() {
+    local response size ctx prompt=$PROMPT
+    # Русская подсказка мешает чисто английской речи.
+    [[ $LANGUAGE == en ]] && prompt=""
+    # Окно энкодера по длине записи (1500 = 30 с): короткие фразы распознаются в 2 раза быстрее.
+    size=$(stat -c %s "$WAV")
+    ctx=$(((size / 32000 + 2) * 50))
+    ((ctx >= 1500)) && ctx=0
+    response=$(curl -fsS -m 120 "http://127.0.0.1:$PORT/inference" \
+        -F file=@"$WAV" -F response_format=json -F temperature=0 -F temperature_inc=0 \
+        -F audio_ctx="$ctx" -F no_timestamps=true \
+        -F language="$LANGUAGE" -F prompt="$prompt" 2>&1) || { log "curl: $response"; return 1; }
+    # Одна строка, без лишних пробелов по краям.
+    jq -r '.text // empty' <<<"$response" | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//'
+}
+
+# ---------- вставка ----------
+
+is_terminal() {
+    case ${1,,} in
+        kitty | alacritty | foot | footclient | org.wezfurlong.wezterm | com.mitchellh.ghostty | *terminal* | *konsole* | xterm* | *terminator*) return 0 ;;
+    esac
+    return 1
+}
+
+paste_clipboard() {
+    local text=$1 class=$2 saved=$RUN/clipboard.saved mime rc
+    # Сохранить прежнее содержимое буфера, вставить, восстановить.
+    mime=$(wl-paste --list-types 2>/dev/null | head -n1)
+    [[ -n $mime ]] && wl-paste --no-newline --type "$mime" >"$saved" 2>/dev/null
+    printf '%s' "$text" | wl-copy
+    sleep 0.05
+    if is_terminal "$class"; then
+        wtype -M ctrl -M shift -k v -m shift -m ctrl
+    else
+        wtype -M ctrl -k v -m ctrl
+    fi
+    rc=$?
+    sleep 0.3
+    if [[ -n $mime ]]; then
+        wl-copy --type "$mime" <"$saved"
+    else
+        wl-copy --clear
+    fi
+    rm -f "$saved"
+    return $rc
+}
+
+# Вставить в окно, которое активно сейчас (фокус мог смениться за время распознавания).
+insert_text() {
+    local text=$1 win class pid kitty="" method=$INSERT_METHOD
+    win=$(hyprctl activewindow -j 2>/dev/null) || win='{}'
+    class=$(jq -r '.class // ""' <<<"$win" 2>/dev/null)
+    pid=$(jq -r '.pid // 0' <<<"$win" 2>/dev/null)
+    if [[ -z $class && $(jq -r '.address // ""' <<<"$win" 2>/dev/null) == "" ]]; then
+        printf '%s' "$text" | wl-copy
+        log "no active window: copied to clipboard"
+        set_state error "Нет окна с фокусом: текст скопирован в буфер обмена"
+        play done
+        exit 0
+    fi
+    log "insert into $class (pid $pid)"
+
+    if [[ $method == auto && $class == kitty ]]; then
+        kitty=$(kitten @ --to "unix:$XDG_RUNTIME_DIR/kitty-$pid.sock" ls 2>/dev/null | jq -r '
+            ([.[] | select(.is_focused)] + [.[] | select(.is_active)])[0]
+            | (([.tabs[] | select(.is_focused)] + [.tabs[] | select(.is_active)])[0])
+            | (([.windows[] | select(.is_focused)] + [.windows[] | select(.is_active)])[0].id) // empty' 2>/dev/null)
+        if [[ -n $kitty ]] && printf '%s' "$text" | kitten @ --to "unix:$XDG_RUNTIME_DIR/kitty-$pid.sock" \
+            send-text --match "id:$kitty" --stdin; then
+            return 0
+        fi
+        log "kitten send-text failed, falling back"
+    fi
+
+    # Остальные окна (и терминалы, и GUI): wtype печатает текст сам, с любыми
+    # символами при любой раскладке. Буфер обмена — запасной путь.
+    [[ $method == auto ]] && method=wtype
+    if [[ $method == wtype ]]; then
+        wtype -- "$text" && return 0
+        log "wtype failed, falling back to clipboard"
+    fi
+    paste_clipboard "$text" "$class"
+}
+
+# ---------- команды ----------
+
+start_recording() {
+    recording && return 0
+    command -v whisper-server >/dev/null || fail "whisper-server не установлен"
+    check_mic
+    rm -f "$WAV"
+    local args=(--rate 16000 --channels 1 --format s16)
+    [[ -n $SOURCE ]] && args+=(--target "$SOURCE")
+    pw-record "${args[@]}" "$WAV" </dev/null >/dev/null 2>"$RUN/pw-record.log" 9>&- &
+    echo $! >"$REC_PID"
+    sleep 0.15
+    recording || { rm -f "$REC_PID"; fail "Микрофон недоступен: $(tail -n1 "$RUN/pw-record.log")"; }
+    set_state recording
+    play start
+    log "recording started (mode $MODE, source ${SOURCE:-default})"
+    # Автоостановка по MAX_SECONDS.
+    (sleep "$MAX_SECONDS" && exec "$SELF" stop) </dev/null >/dev/null 2>&1 9>&- &
+    echo $! >"$TIMER_PID"
+    # Загрузить модель, пока пользователь говорит.
+    (ensure_server) </dev/null >/dev/null 2>&1 9>&- &
+}
+
+stop_recording() {
+    [[ -f $REC_PID ]] || return 0
+    local pid i
+    pid=$(<"$REC_PID")
+    [[ -f $TIMER_PID ]] && kill "$(<"$TIMER_PID")" 2>/dev/null
+    rm -f "$TIMER_PID"
+    kill -INT "$pid" 2>/dev/null
+    for ((i = 0; i < 40; i++)); do
+        kill -0 "$pid" 2>/dev/null || break
+        sleep 0.05
+    done
+    kill -0 "$pid" 2>/dev/null && kill -KILL "$pid"
+    rm -f "$REC_PID"
+    set_state transcribing
+
+    local size seconds
+    size=$(stat -c %s "$WAV" 2>/dev/null || echo 0)
+    seconds=$(((size - 44) / 32000))
+    log "recorded ${seconds}s ($size bytes)"
+    ((size > 44 + 16000)) || fail "Слишком короткая запись"
+
+    local peak
+    peak=$(ffmpeg -hide_banner -nostats -i "$WAV" -af volumedetect -f null - 2>&1 |
+        sed -nE 's/.*max_volume: (-?[0-9.]+) dB.*/\1/p')
+    if [[ -n $peak ]] && awk -v p="$peak" 'BEGIN { exit !(p < -50) }'; then
+        fail "Тишина в записи: проверьте микрофон"
+    fi
+
+    recognize_and_insert "$seconds"
+}
+
+recognize_and_insert() {
+    local seconds=$1 started text
+    ensure_server || fail "Ошибка whisper: сервер не запустился (journalctl --user -u $SERVER_UNIT)"
+    started=$(date +%s%3N)
+    text=$(transcribe) || fail "Ошибка whisper: запрос не выполнен"
+    log "transcribed in $(($(date +%s%3N) - started)) ms: $text"
+    touch "$USED"
+    # Без повторных проходов (temperature_inc=0) неразборчивый звук даёт мусор вроде «И. . .»:
+    # меньше двух букв или цифр — считать, что речи не было.
+    local letters=${text//[^[:alnum:]]/}
+    if [[ -z $text ]] || ((${#letters} < 2)) || { ((seconds < 4)) && grep -qiE "$HALLUCINATIONS" <<<"${text,,}"; }; then
+        fail "Речь не распознана"
+    fi
+    insert_text "$text" || fail "Не удалось вставить текст"
+    rm -f "$WAV"
+    set_state idle
+    play done
+}
+
+# ---------- настройки ----------
+
+config_json() {
+    local models
+    models=$(find "$MODELS_DIR" -maxdepth 1 -name 'ggml-*.bin' -printf '%p\t%s\n' 2>/dev/null | sort |
+        jq -R -s -c '[split("\n")[] | select(length > 0) | split("\t")
+            | {path: .[0], name: (.[0] | split("/")[-1] | sub("^ggml-"; "") | sub("\\.bin$"; "")), size: (.[1] | tonumber)}]')
+    jq -n -c --arg mode "$MODE" --arg language "$LANGUAGE" --arg model "$MODEL" --arg source "$SOURCE" \
+        --argjson sounds "$([[ $SOUNDS == 1 ]] && echo true || echo false)" \
+        --argjson models "${models:-[]}" --argjson sources "$(sources_json || echo '[]')" \
+        --arg defaultSource "$(default_source)" \
+        '{mode: $mode, language: $language, model: $model, source: $source, sounds: $sounds,
+          models: $models, sources: ($sources // []), defaultSource: $defaultSource}'
+}
+
+set_option() {
+    local key=${1:-} value=${2-}
+    case $key in
+        MODE) [[ $value == hold || $value == toggle ]] ;;
+        LANGUAGE) [[ $value == auto || $value == ru || $value == en ]] ;;
+        SOUNDS) [[ $value == 0 || $value == 1 ]] ;;
+        SOURCE) [[ -z $value || $value =~ ^[A-Za-z0-9_.:@-]+$ ]] ;;
+        MODEL) [[ $value =~ ^[A-Za-z0-9_./-]+$ && $value == "$MODELS_DIR"/ggml-*.bin && -r $value ]] ;;
+        *) echo "Неизвестная настройка: $key" >&2; return 2 ;;
+    esac || { echo "Недопустимое значение для $key: $value" >&2; return 2; }
+
+    mkdir -p "$(dirname "$CONFIG")"
+    if [[ -f $CONFIG ]]; then cp -p "$CONFIG" "$CONFIG.bak"; else : >"$CONFIG"; fi
+    local tmp
+    tmp=$(mktemp "$CONFIG.XXXXXX") || return 1
+    # Заменить строку KEY=… (или дописать, если её нет), остальное и комментарии не трогать.
+    awk -v key="$key" -v line="$key=\"$value\"" '
+        $0 ~ "^" key "=" { if (!done) print line; done = 1; next }
+        { print }
+        END { if (!done) print line }' "$CONFIG" 2>/dev/null >"$tmp" || { rm -f "$tmp"; return 1; }
+    chmod 644 "$tmp" && mv -f "$tmp" "$CONFIG"
+    log "set $key=$value"
+}
+
+case ${1:-toggle} in
+    press | release | toggle | start | stop)
+        action=$1
+        if [[ $action == press ]]; then
+            [[ $MODE == hold ]] && action=start || action=toggle
+        elif [[ $action == release ]]; then
+            # В режиме «нажать/нажать» отпускание клавиши ничего не делает.
+            [[ $MODE == hold ]] || exit 0
+            action=stop
+        fi
+        exec 9>"$LOCK"
+        if [[ $action == stop ]]; then
+            # Отпускание могло прийти, пока запись ещё запускается: подождать.
+            flock -w 3 9 || { log "busy, ignoring $1"; exit 0; }
+        else
+            # Пока идёт распознавание, повторное нажатие игнорируется.
+            flock -n 9 || { log "busy, ignoring $1"; exit 0; }
+        fi
+        case $action in
+            start) start_recording ;;
+            stop) stop_recording ;;
+            *) if recording; then stop_recording; else start_recording; fi ;;
+        esac
+        ;;
+    file)
+        # Проверка без микрофона: распознать готовую запись и вставить в активное окно.
+        [[ -r ${2:-} ]] || { echo "Использование: dictation file <запись>" >&2; exit 2; }
+        exec 9>"$LOCK"
+        flock -n 9 || exit 0
+        ffmpeg -loglevel error -y -i "$2" -ar 16000 -ac 1 -c:a pcm_s16le "$WAV" || fail "Не удалось прочитать $2"
+        set_state transcribing
+        recognize_and_insert $((($(stat -c %s "$WAV") - 44) / 32000))
+        ;;
+    insert)
+        # Проверка вставки без микрофона: напечатать текст в активное окно.
+        insert_text "${2:-}" ;;
+    config) config_json ;;
+    set) set_option "${2:-}" "${3-}" ;;
+    status) cat "$STATE" 2>/dev/null || echo '{"state":"idle"}' ;;
+    sources) sources_json | jq -r '.[] | "\(.name)\t\(.description)"' ;;
+    server-stop) systemctl --user stop "$SERVER_UNIT" "$IDLE_UNIT" 2>/dev/null ;;
+    idle-watch) idle_watch ;;
+    *) echo "Использование: dictation press|release|toggle|start|stop|config|set|status|sources|server-stop|file" >&2; exit 2 ;;
+esac
