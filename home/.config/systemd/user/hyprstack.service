@@ -4,7 +4,7 @@ After=graphical-session.target
 PartOf=graphical-session.target
 
 [Service]
-ExecStart=/home/w1ty/.local/bin/hyprstack-shell
+ExecStart=%h/.local/bin/hyprstack-shell
 Restart=on-failure
 
 [Install]

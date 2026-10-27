@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 # Вернуть мои доработки HyperStack после обновления или переустановки.
 #
-#   ./install.sh            разложить файлы, обновить личную копию оболочки и применить
-#   ./install.sh --check    только показать, что изменится (ничего не трогает)
-#   ./install.sh --no-apply разложить файлы, но не перезагружать Hyprland и оболочку
+#   ./install.sh             поставить доработки и применить
+#   ./install.sh --personal  то же + мои личные настройки (мониторы, переменные, сочетания,
+#                            автозапуск) поверх существующих — для восстановления моей системы
+#   ./install.sh --check     только показать, что изменится (ничего не трогает)
+#   ./install.sh --no-apply  разложить файлы, но не перезагружать Hyprland и оболочку
 #
+# Без --personal личные настройки автора (строки «~ » в files.txt) не ставятся,
+# а ваши переменные из hypr-vars.lua переносятся в vars.lua.
 # Перед заменой отличающиеся файлы сохраняются в
 # ~/.local/state/hyprstack-personal-backup/<дата>/ (тот же путь, что и в ~).
 set -uo pipefail
@@ -17,11 +21,13 @@ PERSONAL_REL=.local/share/hyprstack-personal/shell/
 BACKUP=${XDG_STATE_HOME:-$HOME/.local/state}/hyprstack-personal-backup/$(date +%Y%m%d-%H%M%S)
 CHECK=0
 APPLY=1
+MINE=0
 for arg in "$@"; do
     case $arg in
         --check) CHECK=1; APPLY=0 ;;
         --no-apply) APPLY=0 ;;
-        -h | --help) sed -n '2,9p' "$0"; exit 0 ;;
+        --personal) MINE=1 ;;
+        -h | --help) sed -n '2,15p' "$0"; exit 0 ;;
         *) echo "Неизвестный параметр: $arg" >&2; exit 2 ;;
     esac
 done
@@ -30,7 +36,9 @@ say() { printf '\033[1m%s\033[0m\n' "$*"; }
 warn() { printf '\033[33m! %s\033[0m\n' "$*"; }
 do_() { if ((CHECK)); then echo "  [проверка] $*"; else "$@"; fi; }
 
-files() { grep -v -E '^(#|$)' "$REPO/files.txt"; }
+# Строки files.txt: «путь» или «~ путь» (личный файл).
+entries() { grep -v -E '^(#|$)' "$REPO/files.txt"; }
+files() { entries | sed 's/^~ //'; }
 
 # ---------- 1. HyperStack и пакеты ----------
 
@@ -127,10 +135,20 @@ fi
 # ---------- 3. Файлы ----------
 
 say "Файлы"
+hv=$HOME/.config/hyprstack/hypr-vars.lua vars=$HOME/.config/hyprstack/vars.lua
+# Свои переменные (прежний hypr-vars.lua) переезжают в vars.lua: новый hypr-vars.lua
+# читает их оттуда и добавляет к ним настройки мыши и сочетаний.
+if ((!MINE)) && [[ -f $hv && ! -e $vars ]] && ! grep -q 'vars.lua' "$hv"; then
+    echo "  ваши переменные из hypr-vars.lua перенесены в vars.lua"
+    do_ cp -p "$hv" "$vars"
+fi
 copied=0
-while IFS= read -r path; do
+while IFS= read -r entry; do
+    path=${entry#"~ "}
     src=$REPO/home/$path dst=$HOME/$path
     [[ -f $src ]] || { warn "нет в репозитории: $path"; continue; }
+    # Личные настройки автора ставятся только с --personal.
+    [[ $entry == "~ "* ]] && ((!MINE)) && continue
     if [[ -f $dst && ! -L $dst ]] && cmp -s "$src" "$dst"; then
         continue
     fi
@@ -143,10 +161,22 @@ while IFS= read -r path; do
     do_ mkdir -p "$(dirname "$dst")"
     do_ cp -p "$src" "$dst"
     copied=$((copied + 1))
-done < <(files)
+done < <(entries)
 ((copied)) || echo "  всё уже совпадает"
+((MINE)) || echo "  личные настройки автора (строки «~» в files.txt) пропущены; поставить их: --personal"
+# extras.lua (голосовой ввод, ночной режим, кнопка питания) подключается из local.lua.
+local_lua=$HOME/.config/hyprstack/local.lua
+if ! grep -q 'extras.lua' "$local_lua" 2>/dev/null; then
+    echo "  ~/.config/hyprstack/local.lua: подключение extras.lua"
+    if ((!CHECK)); then
+        [[ -e $local_lua ]] && { mkdir -p "$BACKUP/.config/hyprstack"; cp -p "$local_lua" "$BACKUP/.config/hyprstack/local.lua"; }
+        printf '\n-- Voice input, night light and the power key menu (hyprstack-personal-config).\ndofile((os.getenv("XDG_CONFIG_HOME") or os.getenv("HOME") .. "/.config") .. "/hyprstack/extras.lua")\n' >> "$local_lua"
+    fi
+fi
 [[ -d $BACKUP ]] && echo "  прежние версии сохранены в $BACKUP"
-do_ chmod +x "$HOME/.local/bin/dictation" "$HOME/.local/bin/nightlight" "$HOME/.local/bin/caelestia-session-start"
+for script in dictation nightlight caelestia-session-start; do
+    [[ -f $HOME/.local/bin/$script ]] && do_ chmod +x "$HOME/.local/bin/$script"
+done
 
 # Настройки оболочки, которые живут в общем shell.json: кнопка ночного режима
 # в быстрых переключателях и Dolphin для кнопки «Папка» у записей экрана.

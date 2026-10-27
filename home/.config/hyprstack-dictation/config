@@ -11,7 +11,7 @@ MODE="toggle"
 SOURCE=""
 
 # Модель whisper.cpp из ~/.local/share/whisper-models/.
-MODEL="/home/w1ty/.local/share/whisper-models/ggml-large-v3-turbo-q5_0.bin"
+MODEL="$HOME/.local/share/whisper-models/ggml-large-v3-turbo-q5_0.bin"
 
 # Язык речи: ru, en или auto (определять автоматически).
 LANGUAGE="ru"

@@ -6,7 +6,7 @@
     "touchpad": {
         "all": {
             "natural_scroll": true,
-            "scroll_factor": 1.05,
+            "scroll_factor": 0.75,
             "scroll_method": "2fg",
             "sensitivity": 0.4
         },

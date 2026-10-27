@@ -1,6 +1,32 @@
-# Мои доработки HyperStack
+# Доработки для HyperStack
 
-Личные изменения оболочки HyperStack (Hyprland 0.56, конфиг на Lua, CachyOS).
+Дополнения к оболочке [HyperStack](https://github.com/hase9awa/hyprstack-shell) для Hyprland 0.56
+(конфиг на Lua): голосовой ввод с локальным распознаванием речи, ночной режим, редактор сочетаний
+клавиш, настройки мыши и тачпада, индикатор записи экрана. Всё встраивается в родные настройки
+и панели оболочки. Проверено на CachyOS, ноутбук с графикой Intel.
+
+**English:** add-ons for the [HyperStack](https://github.com/hase9awa/hyprstack-shell) Hyprland shell:
+local voice dictation (whisper.cpp, Vulkan), night light (hyprsunset) with schedule, keyboard shortcut
+editor, mouse & touchpad settings page, screen recording indicator. UI is in Russian and English.
+Install: `git clone https://github.com/W1nq-coder/hyprstack-personal-config.git && cd hyprstack-personal-config && ./install.sh`
+
+## Быстрая установка
+
+Нужен установленный HyperStack. Затем:
+
+```sh
+sudo pacman -S --needed whisper-cpp ggml-vulkan wtype wl-clipboard jq ffmpeg curl \
+  hyprsunset mpv wf-recorder dolphin
+git clone https://github.com/W1nq-coder/hyprstack-personal-config.git ~/hyprstack-personal-config
+cd ~/hyprstack-personal-config
+./install.sh --check   # посмотреть, что изменится
+./install.sh
+```
+
+`install.sh` не трогает ваши мониторы, сочетания и прочие личные настройки: ваши переменные из
+`hypr-vars.lua` он переносит в `vars.lua`, а к `local.lua` только добавляет подключение `extras.lua`.
+Заменённые файлы сохраняются в `~/.local/state/hyprstack-personal-backup/<дата>/`.
+Для голосового ввода скрипт предложит скачать модель распознавания (~550 МБ).
 
 ## Что здесь есть
 
@@ -9,7 +35,7 @@
   Хранятся в `~/.config/hyprstack/keybinds.json`, применяет `keybinds-ui.lua`.
 - **Мышь и тачпад** (Настройки → Мышь и тачпад): скорость, ускорение, прокрутка, касания, жесты.
   Хранятся в `~/.config/hyprstack/input.json`, применяет `input-ui.lua`.
-- **Кнопка питания** открывает меню сеанса оболочки (бинд в `local.lua`).
+- **Кнопка питания** открывает меню сеанса оболочки (бинд в `extras.lua`).
 - **Голосовой ввод** — Super+Shift+D. Распознавание локально (whisper.cpp на графике Intel через Vulkan),
   текст вставляется в активное окно. Режимы «нажать/нажать» и «удерживать», язык, модель, микрофон, звуки —
   в Настройки → Голосовой ввод. Скрипт `~/.local/bin/dictation`, настройки `~/.config/hyprstack-dictation/config`.
@@ -24,7 +50,7 @@
 Личная копия оболочки (`~/.local/share/hyprstack-personal/shell`) содержит только изменённые файлы,
 остальное в ней — ссылки на установленную оболочку `~/.local/share/hyprstack/shell`.
 
-## Установка с нуля
+## Установка с нуля (моя система целиком)
 
 Команды можно копировать и вставлять по порядку. Основа — CachyOS, при установке выбран Hyprland
 (установщик сам ставит драйверы Intel, `hyprland`, `kitty`, `dolphin`, `alacritty`, `btop` и т.п.).
@@ -114,22 +140,24 @@ allow_remote_control socket-only
 listen_on unix:${XDG_RUNTIME_DIR}/kitty-{kitty_pid}.sock
 ```
 
-### 7. Мои доработки
+### 7. Доработки и мои личные настройки
 
 ```sh
-gh auth login --web --git-protocol https
-gh repo clone W1nq-coder/hyprstack-personal-config ~/hyprstack-personal-config
+git clone https://github.com/W1nq-coder/hyprstack-personal-config.git ~/hyprstack-personal-config
 cd ~/hyprstack-personal-config
-./install.sh
+./install.sh --personal
 ```
+
+`--personal` ставит и мои личные настройки (мониторы, переменные, сочетания, автозапуск —
+строки с `~` в `files.txt`) поверх имеющихся. Без него ставятся только сами доработки.
 
 ## После обновления или переустановки HyperStack
 
 ```sh
-cd ~/hyprstack-personal-config     # или: git clone https://github.com/W1nq-coder/hyprstack-personal-config.git
+cd ~/hyprstack-personal-config
 git pull
 ./install.sh --check               # посмотреть, что изменится (ничего не трогает)
-./install.sh
+./install.sh                       # у себя: ./install.sh --personal
 ```
 
 `install.sh`:
@@ -138,7 +166,7 @@ git pull
 2. восстанавливает личную копию оболочки: подключает новые файлы из обновления, убирает битые ссылки;
 3. предупреждает, если обновление изменило оригиналы файлов, которые заменены своими версиями
    (тогда эти файлы, возможно, нужно перенести на новую версию);
-4. раскладывает файлы; отличающиеся прежние версии сохраняет в
+4. раскладывает файлы (личные настройки — только с `--personal`); отличающиеся прежние версии сохраняет в
    `~/.local/state/hyprstack-personal-backup/<дата>/`;
 5. добавляет в `shell.json` кнопку ночного режима и Dolphin для записей экрана;
 6. предлагает скачать модель распознавания речи (~550 МБ), если её нет;
@@ -167,6 +195,12 @@ git add -A && git commit -m "Описание изменений" && git push
   `~/.config/systemd/user/hyprstack.service.d/20-personal-shell.conf` и
   `~/.config/systemd/user/hyprstack-session.service.d/10-personal-shell.conf`, затем
   `systemctl --user daemon-reload && systemctl --user restart hyprstack.service`.
-- Отключить голосовой ввод или ночной режим: удалить соответствующий блок в конце
-  `~/.config/hyprstack/local.lua` и выполнить `hyprctl reload`; для ночного режима ещё
+- Отключить голосовой ввод, ночной режим или бинд кнопки питания: удалить соответствующий блок
+  в `~/.config/hyprstack/extras.lua` (или строку с `extras.lua` в `local.lua` — тогда все три)
+  и выполнить `hyprctl reload`; для ночного режима ещё
   `nightlight off && systemctl --user disable --now hyprstack-nightlight-schedule.timer`.
+
+## Лицензия
+
+GPL-3.0, как и у [HyperStack](https://github.com/hase9awa/hyprstack-shell): часть файлов —
+изменённые файлы этой оболочки.

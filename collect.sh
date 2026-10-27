@@ -6,6 +6,7 @@ cd "$(dirname "$(readlink -f "$0")")"
 missing=0
 while IFS= read -r path; do
     [[ -z $path || $path == \#* ]] && continue
+    path=${path#"~ "}
     if [[ -f $HOME/$path ]]; then
         mkdir -p "home/$(dirname "$path")"
         cp -p "$HOME/$path" "home/$path"
@@ -23,6 +24,6 @@ while IFS= read -r path; do
     [[ $path == "$personal"* ]] || continue
     rel=${path#"$personal"}
     [[ -f $installed/$rel ]] && printf '%s  %s\n' "$(sha256sum < "$installed/$rel" | cut -d' ' -f1)" "$rel" >> upstream.sha256
-done < <(grep -v -E '^(#|$)' files.txt)
+done < <(grep -v -E '^(#|$)' files.txt | sed 's/^~ //')
 echo "Собрано в $(pwd)/home"
 exit $missing

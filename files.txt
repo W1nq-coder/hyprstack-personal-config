@@ -1,29 +1,32 @@
 # Файлы доработок относительно домашнего каталога (~). Их собирает collect.sh и раскладывает install.sh.
+# Строки с «~ » — личные настройки автора (мониторы, переменные, сочетания, автозапуск):
+# install.sh ставит их только с параметром --personal.
 
 # Настройки Hyprland и оболочки
-.config/hyprstack/local.lua
-.config/hyprstack/hypr-user.lua
-.config/hyprstack/monitors.lua
-.config/hypr/display-tuning.lua
 .config/hyprstack/hypr-vars.lua
+.config/hyprstack/extras.lua
+~ .config/hyprstack/local.lua
+~ .config/hyprstack/vars.lua
+~ .config/hyprstack/monitors.lua
+~ .config/hypr/display-tuning.lua
 .config/hyprstack/keybinds-ui.lua
-.config/hyprstack/keybinds.json
+~ .config/hyprstack/keybinds.json
 .config/hyprstack/input-ui.lua
-.config/hyprstack/input.json
-.config/hyprstack/nightlight.json
-.config/hyprstack-dictation/config
+~ .config/hyprstack/input.json
+~ .config/hyprstack/nightlight.json
+~ .config/hyprstack-dictation/config
 
 # Службы systemd --user
-.config/systemd/user/hyprstack.service
-.config/systemd/user/hyprstack.service.d/10-autostart.conf
-.config/systemd/user/hyprstack.service.d/20-personal-shell.conf
+~ .config/systemd/user/hyprstack.service
+~ .config/systemd/user/hyprstack.service.d/10-autostart.conf
+~ .config/systemd/user/hyprstack.service.d/20-personal-shell.conf
 .config/systemd/user/hyprstack-session.service.d/10-personal-shell.conf
 .config/systemd/user/hyprstack-nightlight-schedule.service
 .config/systemd/user/hyprstack-nightlight-schedule.timer
 
 # Скрипты и звуки
 .local/bin/dictation
-.local/bin/caelestia-session-start
+~ .local/bin/caelestia-session-start
 .local/bin/nightlight
 .local/share/hyprstack-dictation/sounds/start.wav
 .local/share/hyprstack-dictation/sounds/done.wav
