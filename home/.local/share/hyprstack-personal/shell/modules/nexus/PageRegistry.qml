@@ -93,6 +93,12 @@ QtObject {
             description: String(Tr.language).startsWith("ru") ? "Тёплый оттенок экрана, расписание" : "Warm screen tint, schedule",
             category: "shell"
         },
+        {
+            label: String(Tr.language).startsWith("ru") ? "Медиа" : "Media",
+            icon: "album",
+            description: String(Tr.language).startsWith("ru") ? "Обложка, громкость, «Мне нравится» в дашборде" : "Cover, volume and like button in the dashboard",
+            category: "shell"
+        },
 
         // About
         {

@@ -46,6 +46,8 @@ ShellRoot {
     SwitcherModule.WindowSwitcher {}
     DictationOverlay {} // voice input indicator (personal overlay)
     RecordingIndicator {} // screen recording indicator (personal overlay)
+    PopoutSidebarGuard {} // tray menus and notification centre never overlap (personal overlay)
+    DashboardIpc {} // open the dashboard on a given tab (personal overlay)
     BatteryMonitor {}
     IdleMonitors {
         lock: lock

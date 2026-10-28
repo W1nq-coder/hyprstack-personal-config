@@ -183,15 +183,20 @@ for script in dictation nightlight caelestia-session-start; do
 done
 
 # Настройки оболочки, которые живут в общем shell.json: кнопка ночного режима
-# в быстрых переключателях и Dolphin для кнопки «Папка» у записей экрана.
+# в быстрых переключателях, Dolphin для кнопки «Папка» у записей экрана, список
+# приложений и дашборд только по сочетанию клавиш (не выскакивают от мыши у края),
+# угловая панель утилит выключена: её карточки на вкладке дашборда «Управление».
 shell_json=$HOME/.config/hyprstack/shell.json
 if [[ -f $shell_json ]]; then
     patched=$(jq '
         .general.apps.explorer = ["dolphin", "--select"]
+        | .launcher.showOnHover = false
+        | .dashboard.showOnHover = false
+        | .utilities.enabled = false
         | if (.utilities.quickToggles // null) == null or any(.utilities.quickToggles[]; .id == "nightLight") then .
           else .utilities.quickToggles += [{"enabled": true, "id": "nightLight"}] end' "$shell_json")
     if [[ -n $patched && $patched != "$(jq . "$shell_json")" ]]; then
-        echo "  ~/.config/hyprstack/shell.json: кнопка ночного режима и Dolphin для записей"
+        echo "  ~/.config/hyprstack/shell.json: кнопка ночного режима, Dolphin для записей, список приложений и дашборд"
         if ((!CHECK)); then
             mkdir -p "$BACKUP/.config/hyprstack"
             cp -p "$shell_json" "$BACKUP/.config/hyprstack/shell.json"

@@ -1,6 +1,6 @@
 {
     "enabled": false,
-    "temperature": 4000,
+    "temperature": 4500,
     "schedule": {
         "enabled": true,
         "from": "22:00",

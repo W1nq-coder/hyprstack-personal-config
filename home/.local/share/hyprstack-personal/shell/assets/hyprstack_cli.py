@@ -359,8 +359,14 @@ def start_recording(args):
             directory.mkdir(parents=True, exist_ok=True)
             target = directory / ("recording_" + datetime.now().strftime("%Y-%m-%d_%H-%M-%S-%f") + ".mp4")
             command = ["wf-recorder", "-o", output, "-f", str(target)]
-            if args.sound:
-                command.append("--audio")
+            # Personal overlay: --audio-source mic|system|both (-s alone = mic, as before).
+            audio = args.audio_source or ("mic" if args.sound else None)
+            if audio == "mic":
+                command.append("--audio=" + pactl_default("source"))
+            elif audio == "system":
+                command.append("--audio=" + pactl_default("sink") + ".monitor")
+            elif audio == "both":
+                command.append("--audio=" + MIX_MARKER)
             if geometry:
                 command += ["-g", geometry]
             themes.atomic_json(pending, {**state, "state": "starting"})
@@ -401,7 +407,59 @@ def start_recording(args):
                 signal.signal(sig, handler)
 
 
+MIX_MARKER = "@hyprstack-mix@"
+MIX_SINK = "hyprstack_record_mix"
+
+
+def pactl_default(kind):
+    result = subprocess.run(["pactl", "get-default-" + kind], capture_output=True, text=True)
+    name = result.stdout.strip()
+    if result.returncode or not name:
+        raise ValueError("Не удалось найти звуковое устройство по умолчанию")
+    return name
+
+
+def unload_mix_modules():
+    # Remove the recording mixer (also leftovers of a crashed recording).
+    result = subprocess.run(["pactl", "list", "short", "modules"], capture_output=True, text=True)
+    for line in result.stdout.splitlines():
+        fields = line.split("\t")
+        if len(fields) > 2 and MIX_SINK in fields[2]:
+            subprocess.run(["pactl", "unload-module", fields[0]], capture_output=True)
+
+
+def setup_mix():
+    # A silent virtual sink that receives the system sound (monitor of the default
+    # output) and the default microphone; wf-recorder records its monitor.
+    unload_mix_modules()
+    sink, source = pactl_default("sink"), pactl_default("source")
+    load = lambda *a: subprocess.run(["pactl", "load-module", *a], capture_output=True, text=True, check=True)
+    load("module-null-sink", "sink_name=" + MIX_SINK,
+         "sink_properties=device.description=Запись_экрана:_звук_и_микрофон")
+    load("module-loopback", "source=" + sink + ".monitor", "sink=" + MIX_SINK, "latency_msec=20",
+         "source_dont_move=true", "sink_dont_move=true")
+    load("module-loopback", "source=" + source, "sink=" + MIX_SINK, "latency_msec=20",
+         "source_dont_move=true", "sink_dont_move=true")
+    # Loading a sink must not change where the user's sound plays.
+    if pactl_default("sink") != sink:
+        subprocess.run(["pactl", "set-default-sink", sink], capture_output=True)
+    return MIX_SINK + ".monitor"
+
+
 def record_worker(command):
+    mix = "--audio=" + MIX_MARKER
+    if mix not in command:
+        return record_worker_run(command)
+    try:
+        command = [("--audio=" + setup_mix()) if arg == mix else arg for arg in command]
+        return record_worker_run(command)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return 1
+    finally:
+        unload_mix_modules()
+
+
+def record_worker_run(command):
     os.umask(0o077)
     directory = STATE / "record"
     directory.mkdir(parents=True, exist_ok=True)
@@ -563,6 +621,7 @@ def parser():
     record = sub.add_parser("record", help=_("Record the screen"))
     record.add_argument("-r", "--region", nargs="?", const="slurp")
     record.add_argument("-s", "--sound", action="store_true")
+    record.add_argument("--audio-source", choices=("mic", "system", "both"))
     record.add_argument("-p", "--pause", action="store_true")
     record.add_argument("--status", action="store_true")
     record.add_argument("--stop", action="store_true")

@@ -14,6 +14,12 @@
 .config/hyprstack/input-ui.lua
 ~ .config/hyprstack/input.json
 ~ .config/hyprstack/nightlight.json
+~ .config/hyprstack/media.json
+~ .local/share/applications/gnova.desktop
+~ .local/share/icons/hicolor/64x64/apps/gnova.png
+~ .local/share/icons/hicolor/128x128/apps/gnova.png
+~ .local/share/icons/hicolor/256x256/apps/gnova.png
+~ .local/share/icons/hicolor/512x512/apps/gnova.png
 ~ .config/hyprstack-dictation/config
 
 # Службы systemd --user
@@ -41,6 +47,13 @@
 .local/share/hyprstack-personal/shell/modules/ServiceLoader.qml
 .local/share/hyprstack-personal/shell/modules/DictationOverlay.qml
 .local/share/hyprstack-personal/shell/modules/RecordingIndicator.qml
+.local/share/hyprstack-personal/shell/modules/PopoutSidebarGuard.qml
+.local/share/hyprstack-personal/shell/modules/DashboardIpc.qml
+.local/share/hyprstack-personal/shell/modules/dashboard/media/CoverVisualiser.qml
+.local/share/hyprstack-personal/shell/modules/dashboard/media/Details.qml
+.local/share/hyprstack-personal/shell/modules/dashboard/media/LyricList.qml
+.local/share/hyprstack-personal/shell/modules/dashboard/Content.qml
+.local/share/hyprstack-personal/shell/modules/dashboard/Controls.qml
 .local/share/hyprstack-personal/shell/modules/osd/Content.qml
 .local/share/hyprstack-personal/shell/modules/nexus/PageRegistry.qml
 .local/share/hyprstack-personal/shell/modules/nexus/PageCompRegistry.qml
@@ -48,8 +61,10 @@
 .local/share/hyprstack-personal/shell/modules/nexus/pages/InputPage.qml
 .local/share/hyprstack-personal/shell/modules/nexus/pages/DictationPage.qml
 .local/share/hyprstack-personal/shell/modules/nexus/pages/NightLightPage.qml
+.local/share/hyprstack-personal/shell/modules/nexus/pages/MediaPage.qml
 .local/share/hyprstack-personal/shell/modules/utilities/cards/Toggles.qml
 .local/share/hyprstack-personal/shell/modules/utilities/cards/RecordingList.qml
+.local/share/hyprstack-personal/shell/modules/utilities/cards/Record.qml
 .local/share/hyprstack-personal/shell/services/Brightness.qml
 .local/share/hyprstack-personal/shell/services/Keybinds.qml
 .local/share/hyprstack-personal/shell/services/Keybinds.js
@@ -57,6 +72,7 @@
 .local/share/hyprstack-personal/shell/services/Dictation.qml
 .local/share/hyprstack-personal/shell/services/NightLight.qml
 .local/share/hyprstack-personal/shell/services/Recorder.qml
+.local/share/hyprstack-personal/shell/services/MediaSettings.qml
 .local/share/hyprstack-personal/shell/scripts/keybinds-apply.py
 .local/share/hyprstack-personal/shell/scripts/keybinds-apps.py
 .local/share/hyprstack-personal/shell/scripts/input-apply.py

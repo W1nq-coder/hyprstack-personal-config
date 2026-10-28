@@ -202,6 +202,13 @@ QtObject {
                 }
             }
         },
+        Component {
+            StackPage {
+                Component {
+                    MediaPage {}
+                }
+            }
+        },
 
         // About
         Component {

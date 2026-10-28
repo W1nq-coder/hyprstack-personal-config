@@ -3,6 +3,12 @@
         "distance": 800,
         "invert": false
     },
+    "mouse": {
+        "all": {
+            "scroll_factor": 1.05,
+            "sensitivity": 0.0
+        }
+    },
     "touchpad": {
         "all": {
             "natural_scroll": true,

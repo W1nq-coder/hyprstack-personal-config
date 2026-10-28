@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=Gnova Music
+GenericName=Music Player
+GenericName[ru]=Музыкальный плеер
+Comment=SoundCloud and local music player
+Comment[ru]=Плеер для SoundCloud и музыки с компьютера
+Exec=/home/w1ty/progg/Gnova/gnova %F
+TryExec=/home/w1ty/progg/Gnova/gnova
+Path=/home/w1ty/progg/Gnova
+Icon=gnova
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+Keywords=music;player;soundcloud;audio;музыка;плеер;гнова;
+StartupWMClass=gnova
+StartupNotify=true
