@@ -34,3 +34,12 @@ hl.bind("SUPER + ALT + equal", hl.dsp.exec_cmd(nightlight .. " warmer --notify")
     { repeating = true, description = "Shell: Night light warmer" })
 hl.bind("SUPER + ALT + minus", hl.dsp.exec_cmd(nightlight .. " cooler --notify"),
     { repeating = true, description = "Shell: Night light cooler" })
+
+-- Screenshots like Omarchy (~/.local/bin/screenshot): Print selects an area (click a window
+-- to take the whole window) and opens it in Satty (Enter = copy + save); Shift+Print copies
+-- and saves the area at once. HyperStack's own full-monitor screenshot is moved to Ctrl+Print
+-- in Settings → Keyboard shortcuts.
+local screenshot = home .. "/.local/bin/screenshot"
+hl.bind("Print", hl.dsp.exec_cmd(screenshot .. " edit"), { description = "Capture: Screenshot area with editor" })
+hl.bind("SHIFT + Print", hl.dsp.exec_cmd(screenshot .. " region"), { description = "Capture: Screenshot area to clipboard" })
+hl.window_rule({ name = "screenshot-satty", match = { class = "^(com\\.gabm\\.satty)$" }, float = true, center = true })

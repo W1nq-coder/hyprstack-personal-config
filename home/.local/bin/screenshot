@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+# Скриншоты в стиле Omarchy для Hyprstack.
+#
+#   screenshot edit     выделить область (экран замирает; клик по окну — всё окно)
+#                       → редактор Satty: Enter — в буфер обмена и в файл, Esc — закрыть
+#   screenshot region   выделить область → сразу в буфер обмена и в файл
+#   screenshot full     весь текущий монитор → в буфер обмена и в файл
+#
+# Файлы: ~/Pictures/Screenshots (как у «hyprstack screenshot»).
+set -uo pipefail
+
+DIR=${HYPRSTACK_SCREENSHOTS_DIR:-$(xdg-user-dir PICTURES 2>/dev/null || echo "$HOME/Pictures")/Screenshots}
+mkdir -p "$DIR"
+FILE=$DIR/Screenshot-$(date +%Y-%m-%d_%H-%M-%S).png
+LOCK=${XDG_RUNTIME_DIR:-/tmp}/hyprstack-screenshot.lock
+
+# Не запускать второе выделение поверх первого. Замок держится только на время
+# выделения; фоновые программы (wl-copy держит буфер обмена) его не наследуют.
+exec 9>"$LOCK"
+flock -n 9 || exit 0
+release() { flock -u 9; exec 9>&-; }
+
+notify() {
+    notify-send -a "Скриншот" -i "$1" -h "string:image-path:$1" -h boolean:x-hyprstack-screenshot:true \
+        "Скриншот сохранён" "Скопирован в буфер обмена · $1" 2>/dev/null &
+}
+
+# Прямоугольники окон на видимых рабочих столах и мониторов: клик без
+# протягивания в slurp выбирает окно или монитор целиком.
+boxes() {
+    local workspaces
+    workspaces=$(hyprctl monitors -j | jq -c '[.[].activeWorkspace.id]')
+    hyprctl clients -j | jq -r --argjson ws "$workspaces" \
+        '.[] | select(.mapped and (.hidden | not) and (.workspace.id as $w | $ws | index($w)))
+         | "\(.at[0]),\(.at[1]) \(.size[0])x\(.size[1])"'
+    hyprctl monitors -j | jq -r '.[] | "\(.x),\(.y) \((.width / .scale) | floor)x\((.height / .scale) | floor)"'
+}
+
+# Заморозить экран (hyprpicker без выбора цвета), выделить область, разморозить.
+select_area() {
+    local freeze geometry
+    hyprpicker -r -z >/dev/null 2>&1 9>&- &
+    freeze=$!
+    sleep 0.15
+    geometry=$(boxes | slurp -d -b '#00000066' -c '#fabd2fff' -s '#fabd2f22' -w 2 2>/dev/null 9>&-)
+    kill "$freeze" 2>/dev/null
+    wait "$freeze" 2>/dev/null
+    printf '%s' "$geometry"
+}
+
+focused_output() {
+    hyprctl monitors -j | jq -r '.[] | select(.focused) | .name'
+}
+
+case ${1:-edit} in
+    edit)
+        geometry=$(select_area)
+        release
+        [[ -n $geometry ]] || exit 0 # Esc — отмена
+        grim -g "$geometry" - | satty --filename - --output-filename "$FILE" \
+            --early-exit --actions-on-enter save-to-clipboard --save-after-copy \
+            --copy-command wl-copy --initial-tool arrow --disable-notifications
+        [[ -f $FILE ]] && notify "$FILE"
+        ;;
+    region)
+        geometry=$(select_area)
+        release
+        [[ -n $geometry ]] || exit 0
+        grim -g "$geometry" "$FILE" && wl-copy --type image/png < "$FILE" && notify "$FILE"
+        ;;
+    full)
+        release
+        grim -o "$(focused_output)" "$FILE" && wl-copy --type image/png < "$FILE" && notify "$FILE"
+        ;;
+    *)
+        echo "Использование: screenshot edit|region|full" >&2
+        exit 2
+        ;;
+esac

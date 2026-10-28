@@ -109,12 +109,17 @@ Variants {
                         radius: width / 2
                         color: Colours.palette.m3error
 
-                        SequentialAnimation on opacity {
+                        // Step blink (2 redraws a second). A smooth animation would
+                        // redraw the overlay at the full refresh rate during recording.
+                        property bool dim
+                        opacity: dim ? 0.3 : 1
+
+                        Timer {
+                            interval: 700
+                            repeat: true
                             running: Recorder.running && !Recorder.paused && win.visible
-                            loops: Animation.Infinite
-                            alwaysRunToEnd: true
-                            NumberAnimation { from: 1; to: 0.25; duration: 700; easing.type: Easing.InOutQuad }
-                            NumberAnimation { from: 0.25; to: 1; duration: 700; easing.type: Easing.InOutQuad }
+                            onTriggered: parent.dim = !parent.dim
+                            onRunningChanged: if (!running) parent.dim = false
                         }
                     }
 

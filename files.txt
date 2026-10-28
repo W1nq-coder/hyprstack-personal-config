@@ -28,6 +28,7 @@
 .local/bin/dictation
 ~ .local/bin/caelestia-session-start
 .local/bin/nightlight
+.local/bin/screenshot
 .local/share/hyprstack-dictation/sounds/start.wav
 .local/share/hyprstack-dictation/sounds/done.wav
 .local/share/hyprstack-dictation/sounds/error.wav
@@ -35,6 +36,7 @@
 # Личная копия оболочки: только изменённые и новые файлы, остальное — ссылки на установленную
 .local/share/hyprstack-personal/shell/shell.qml
 .local/share/hyprstack-personal/shell/assets/brightness.py
+.local/share/hyprstack-personal/shell/assets/hyprstack_cli.py
 .local/share/hyprstack-personal/shell/assets/hyprland/dimming.lua
 .local/share/hyprstack-personal/shell/modules/ServiceLoader.qml
 .local/share/hyprstack-personal/shell/modules/DictationOverlay.qml
@@ -54,6 +56,7 @@
 .local/share/hyprstack-personal/shell/services/InputSettings.qml
 .local/share/hyprstack-personal/shell/services/Dictation.qml
 .local/share/hyprstack-personal/shell/services/NightLight.qml
+.local/share/hyprstack-personal/shell/services/Recorder.qml
 .local/share/hyprstack-personal/shell/scripts/keybinds-apply.py
 .local/share/hyprstack-personal/shell/scripts/keybinds-apps.py
 .local/share/hyprstack-personal/shell/scripts/input-apply.py

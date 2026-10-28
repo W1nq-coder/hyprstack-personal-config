@@ -1,14 +1,7 @@
 {
     "custom": [
         {
-            "chord": "SUPER + CTRL + ALT + F12",
-            "command": "notify-send \"HyperStack\" \"Тестовое сочетание сработало\"",
-            "icon": "kitty",
-            "id": "ctest1",
-            "name": "Тест"
-        },
-        {
-            "chord": "CTRL + SHIFT + F",
+            "chord": "SUPER + SHIFT + F",
             "command": "dolphin",
             "icon": "org.kde.dolphin",
             "id": "cmvqldicbit3b",
@@ -16,13 +9,16 @@
         },
         {
             "chord": "SUPER + SHIFT + Bracketleft",
-            "command": "/opt/happ/bin/Happ",
+            "command": "env QT_QUICK_BACKEND=software /opt/happ/bin/Happ -platform wayland",
             "icon": "happ",
             "id": "cmvqljcacrsau",
             "name": "Happ"
         }
     ],
     "slots": {
+        "\tCapture: Screenshot current monitor\t|print": [
+            "CTRL + Print"
+        ],
         "\tShell: Open overview\tSUPER|o": [
             "CTRL + O"
         ]

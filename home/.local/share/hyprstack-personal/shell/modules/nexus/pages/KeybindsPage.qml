@@ -280,9 +280,12 @@ PageBase {
         onTriggered: root.cancelEdit()
     }
 
+    // The service keeps the list up to date on its own (config reloads, file
+    // changes), so opening the page does not re-read it and rebuild every row.
+    // Applications are loaded only when the "Add shortcut" form opens.
     Component.onCompleted: {
-        Keybinds.reload();
-        Keybinds.loadApps();
+        if (!Keybinds.bindings.length)
+            Keybinds.reload();
     }
     Component.onDestruction: if (editing) Keybinds.stopRecording()
 
@@ -646,12 +649,20 @@ PageBase {
             wrapMode: Text.WordWrap
         }
 
+        // Rows are built in the background a few at a time, so the page opens
+        // immediately instead of creating ~200 rows in one go.
         Repeater {
             model: root.filtered
-            ColumnLayout {
-                id: entry
+            Loader {
+                id: entryLoader
                 required property var modelData
                 required property int index
+                Layout.fillWidth: true
+                asynchronous: true
+                sourceComponent: ColumnLayout {
+                id: entry
+                readonly property var modelData: entryLoader.modelData
+                readonly property int index: entryLoader.index
                 readonly property bool editingHere: root.editing?.entryKey === modelData.key
                 Layout.fillWidth: true
                 spacing: 0
@@ -773,11 +784,13 @@ PageBase {
                             }
                         }
 
-                        // Conflict with another shortcut
-                        ColumnLayout {
+                        // Conflict with another shortcut (created only when shown)
+                        Loader {
                             Layout.fillWidth: true
                             Layout.topMargin: Tokens.spacing.extraSmall
-                            visible: entry.editingHere && !!root.conflict
+                            active: entry.editingHere && !!root.conflict
+                            visible: active
+                            sourceComponent: ColumnLayout {
                             spacing: Tokens.spacing.extraSmall
 
                             RowLayout {
@@ -832,9 +845,11 @@ PageBase {
                                     onClicked: root.commit(root.conflict.chord, root.conflict.others)
                                 }
                             }
+                            }
                         }
                     }
                 }
+            }
             }
         }
 

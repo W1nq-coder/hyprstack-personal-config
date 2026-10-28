@@ -45,7 +45,11 @@ files() { entries | sed 's/^~ //'; }
 [[ -d $INSTALLED ]] || { echo "HyperStack не найден в $INSTALLED. Сначала установите его." >&2; exit 1; }
 
 say "Пакеты"
-need=(whisper-cpp ggml-vulkan wtype wl-clipboard pipewire jq ffmpeg curl hyprsunset mpv wf-recorder dolphin github-cli)
+need=(whisper-cpp ggml-vulkan wtype wl-clipboard pipewire jq ffmpeg curl hyprsunset mpv wf-recorder dolphin github-cli
+      satty grim slurp hyprpicker libnotify)
+# Графика Intel: драйвер, чтобы запись экрана кодировала видеокарта, а не процессор.
+grep -qx "0x8086" /sys/class/drm/card*/device/vendor 2>/dev/null || lspci 2>/dev/null | grep -qi "VGA.*Intel" \
+    && need+=(intel-media-driver)
 missing=()
 for pkg in "${need[@]}"; do pacman -Q "$pkg" >/dev/null 2>&1 || missing+=("$pkg"); done
 if ((${#missing[@]})); then

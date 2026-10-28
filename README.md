@@ -16,7 +16,9 @@ Install: `git clone https://github.com/W1nq-coder/hyprstack-personal-config.git 
 
 ```sh
 sudo pacman -S --needed whisper-cpp ggml-vulkan wtype wl-clipboard jq ffmpeg curl \
-  hyprsunset mpv wf-recorder dolphin
+  hyprsunset mpv wf-recorder dolphin satty grim slurp hyprpicker libnotify
+# Графика Intel: запись экрана кодируется видеокартой, а не процессором
+sudo pacman -S --needed intel-media-driver
 git clone https://github.com/W1nq-coder/hyprstack-personal-config.git ~/hyprstack-personal-config
 cd ~/hyprstack-personal-config
 ./install.sh --check   # посмотреть, что изменится
@@ -44,6 +46,13 @@ cd ~/hyprstack-personal-config
   в Настройки → Ночной режим. Скрипт `~/.local/bin/nightlight`, настройки `~/.config/hyprstack/nightlight.json`.
 - **Записи экрана**: плашка «Запись · 0:12» внизу экрана во время записи (клик — остановить),
   кнопка «Папка» открывает Dolphin с выделенным файлом, просмотр в mpv, понятные даты в списке.
+  Видео кодирует видеокарта (VAAPI, 60 кадров/с), а не процессор, поэтому ноутбук во время записи
+  не тормозит. Если видеокарта недоступна, запись сама переходит на кодирование процессором;
+  принудительно — `HYPRSTACK_RECORD_SOFTWARE=1`.
+- **Скриншоты как в Omarchy**: Print — выделить область (клик по окну — всё окно) и открыть в Satty
+  (Enter — скопировать и сохранить), Shift+Print — сразу в буфер и в файл, Ctrl+Print — весь экран.
+  Скрипт `~/.local/bin/screenshot`.
+- **Страница «Сочетания клавиш»** открывается сразу: строки списка создаются в фоне.
 - **Яркость и затемнение** (`Brightness.qml`, `brightness.py`, `dimming.lua`, `display-tuning.lua`).
 
 Папка `home/` повторяет домашний каталог, список файлов — `files.txt`.
@@ -90,7 +99,9 @@ cmake --install build
 
 ```sh
 sudo pacman -S --needed whisper-cpp ggml-vulkan wtype wl-clipboard jq ffmpeg curl \
-  hyprsunset mpv wf-recorder dolphin github-cli
+  hyprsunset mpv wf-recorder dolphin github-cli satty grim slurp hyprpicker libnotify
+# Графика Intel: запись экрана кодируется видеокартой, а не процессором
+sudo pacman -S --needed intel-media-driver
 ```
 
 ### 3. Программы, шрифты и инструменты, которые я ставил дополнительно
@@ -161,7 +172,7 @@ git pull
 
 `install.sh`:
 1. проверяет пакеты и предлагает доустановить недостающие
-   (`whisper-cpp ggml-vulkan wtype wl-clipboard jq ffmpeg hyprsunset mpv wf-recorder dolphin` и др.);
+   (`whisper-cpp ggml-vulkan wtype wl-clipboard jq ffmpeg hyprsunset mpv wf-recorder dolphin satty` и др.);
 2. восстанавливает личную копию оболочки: подключает новые файлы из обновления, убирает битые ссылки;
 3. предупреждает, если обновление изменило оригиналы файлов, которые заменены своими версиями
    (тогда эти файлы, возможно, нужно перенести на новую версию);
