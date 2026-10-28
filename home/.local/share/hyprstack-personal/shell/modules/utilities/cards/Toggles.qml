@@ -168,11 +168,16 @@ StyledRect {
                         disabled: VPN.connecting || VPN.disconnecting || (VPN.active.name === "native" && ManagedVPN.busy)
                         isToggle: VPN.status.state !== "needs-auth" && VPN.status.state !== "error"
                         inactiveOnColour: Colours.palette.m3onSurfaceVariant
+                        // Personal overlay: the button opens the VPN app (subscriptions,
+                        // servers, connect); the taskbar VPN icon still toggles it.
                         onClicked: {
-                            if (VPN.active.name === "native" && ManagedVPN.profiles.length === 0)
+                            if (VPN.active.name === "native") {
+                                root.screenState.dashboard = false;
+                                root.screenState.utilities = false;
                                 ManagedVPN.openSettings();
-                            else
+                            } else {
                                 VPN.toggle();
+                            }
                         }
                     }
                 }

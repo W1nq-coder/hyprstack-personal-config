@@ -68,6 +68,10 @@
 .local/share/hyprstack-personal/shell/modules/drawers/TilingEdgeHint.qml
 .local/share/hyprstack-personal/shell/modules/nexus/pages/panels/TaskbarPanel.qml
 .local/share/hyprstack-personal/shell/services/BarPosition.qml
+.local/share/hyprstack-personal/shell/assets/vpn.py
+.local/share/hyprstack-personal/shell/assets/vpn_profiles.py
+.local/share/hyprstack-personal/shell/modules/vpn/VpnWindow.qml
+.local/share/applications/hyprstack-vpn.desktop
 .local/share/hyprstack-personal/shell/modules/osd/Content.qml
 .local/share/hyprstack-personal/shell/modules/nexus/PageRegistry.qml
 .local/share/hyprstack-personal/shell/modules/nexus/PageCompRegistry.qml
