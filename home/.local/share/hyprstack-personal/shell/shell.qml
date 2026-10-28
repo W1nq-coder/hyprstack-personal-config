@@ -12,6 +12,8 @@ import "modules/lock"
 import "modules/overview" as OverviewModule
 import "modules/switcher" as SwitcherModule
 import "modules/polkit" as PolkitModule
+// Personal overlay: makes the VPN app (loaded on demand) a fully known module
+import "modules/vpn" as PersonalVpn
 import QtQuick
 import Quickshell
 import Hyprstack

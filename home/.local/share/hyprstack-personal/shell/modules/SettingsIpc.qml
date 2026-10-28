@@ -12,18 +12,20 @@ import qs.modules.nexus
 // Personal overlay: `qs ipc call settings open <page> <subpage>` opens the
 // settings window on a page (index in Settings' side list, from 0) and,
 // unless subpage is -1, on one of its subpages (e.g. 4 2 = Panels → Taskbar).
-IpcHandler {
+Scope {
     id: root
 
-    target: "settings"
+    IpcHandler {
+        target: "settings"
 
-    function open(page: int, subpage: int): void {
-        windowComp.createObject(holder, {page, subpage});
+        function open(page: int, subpage: int): void {
+            windowComp.createObject(root, {page, subpage});
+        }
     }
 
-    readonly property QtObject holder: QtObject {}
+    Component {
+        id: windowComp
 
-    readonly property Component windowComp: Component {
         FloatingWindow {
             id: win
 

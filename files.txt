@@ -71,6 +71,17 @@
 .local/share/hyprstack-personal/shell/assets/vpn.py
 .local/share/hyprstack-personal/shell/assets/vpn_profiles.py
 .local/share/hyprstack-personal/shell/modules/vpn/VpnWindow.qml
+.local/share/hyprstack-personal/shell/modules/vpn/VpnDesignOrb.qml
+.local/share/hyprstack-personal/shell/modules/vpn/VpnDesignList.qml
+.local/share/hyprstack-personal/shell/modules/vpn/VpnDesignCards.qml
+.local/share/hyprstack-personal/shell/modules/vpn/VpnSettingsPage.qml
+.local/share/hyprstack-personal/shell/modules/vpn/VpnFlag.qml
+.local/share/hyprstack-personal/shell/modules/vpn/VpnPing.qml
+.local/share/hyprstack-personal/shell/modules/vpn/VpnBars.qml
+.local/share/hyprstack-personal/shell/modules/vpn/VpnAddField.qml
+.local/share/hyprstack-personal/shell/modules/vpn/VpnToolButtons.qml
+.local/share/hyprstack-personal/shell/modules/vpn/VpnGroupChips.qml
+.local/share/hyprstack-personal/shell/services/VpnPrefs.qml
 .local/share/applications/hyprstack-vpn.desktop
 .local/share/hyprstack-personal/shell/modules/osd/Content.qml
 .local/share/hyprstack-personal/shell/modules/nexus/PageRegistry.qml

@@ -272,11 +272,27 @@ def direct_ipv6_available(routes_path=Path('/proc/net/ipv6_route')):
     return False
 
 
-def configuration(profile, mode='proxy', route='all', port=2080, http_port=2081):
+# Remote DNS choices of the VPN window (the AdGuard one also blocks ads and trackers).
+DNS_SERVERS = {'cloudflare': '1.1.1.1', 'google': '8.8.8.8', 'quad9': '9.9.9.9', 'adguard': '94.140.14.14'}
+
+
+def options(value):
+    """Connection settings of the VPN window, with safe defaults."""
+    port = value.get('port', 2080)
+    port = port if isinstance(port, int) and 1024 <= port <= 65534 else 2080
+    direct = [d for d in value.get('direct', []) if isinstance(d, str) and d][:200]
+    return {'dns': value.get('dns') if value.get('dns') in DNS_SERVERS else 'cloudflare', 'port': port, 'direct': direct}
+
+
+def configuration(profile, mode='proxy', route='all', port=2080, http_port=2081, dns='cloudflare', direct=()):
     outbound = copy.deepcopy(profile['outbound'])
+    dns_ip = DNS_SERVERS.get(dns, '1.1.1.1')
     outbound['tag'] = 'vpn'
     private = ['127.0.0.0/8', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0.0/16', '::1/128', 'fc00::/7', 'fe80::/10']
-    bypass = routing_rules() if route == 'bypass-ru' else {}
+    bypass = copy.deepcopy(routing_rules()) if route == 'bypass-ru' else {}
+    if direct:
+        # the user's own sites that skip the VPN
+        bypass.setdefault('domain_suffix', []).extend(direct)
     ipv4_bypass = bool(bypass) and not direct_ipv6_available()
     if profile['engine'] == 'sing-box':
         inbounds = [{'type': 'socks', 'tag': 'socks', 'listen': '127.0.0.1', 'listen_port': port}]
@@ -300,7 +316,7 @@ def configuration(profile, mode='proxy', route='all', port=2080, http_port=2081)
             rules.append({key: values, 'outbound': 'direct'})
         return {'log': {'level': 'warn', 'timestamp': False}, 'inbounds': inbounds,
                 'outbounds': [outbound, direct],
-                'dns': {'servers': [{'type': 'https', 'tag': 'remote', 'server': '1.1.1.1', 'detour': 'vpn'},
+                'dns': {'servers': [{'type': 'https', 'tag': 'remote', 'server': dns_ip, 'detour': 'vpn'},
                                     {'type': 'udp', 'tag': 'bootstrap', 'server': '1.1.1.1'}], 'final': 'remote', 'rules': dns_rules},
                 'route': {'auto_detect_interface': True, 'default_domain_resolver': 'bootstrap', 'rules': rules, 'final': 'vpn'}}
     inbounds = [{'tag': 'socks', 'listen': '127.0.0.1', 'port': port, 'protocol': 'socks', 'settings': {'auth': 'noauth', 'udp': True}}]
@@ -324,7 +340,7 @@ def configuration(profile, mode='proxy', route='all', port=2080, http_port=2081)
         rules.append({'type': 'field', 'domain': domains, 'outboundTag': 'direct'})
     if bypass.get('ip_cidr'):
         rules.append({'type': 'field', 'ip': bypass['ip_cidr'], 'outboundTag': 'direct'})
-    dns_servers = ['https://1.1.1.1/dns-query']
+    dns_servers = [f'https://{dns_ip}/dns-query']
     if ipv4_bypass and domains:
         dns_servers.insert(0, {'address': dns_servers[0], 'domains': domains, 'queryStrategy': 'UseIPv4', 'skipFallback': True})
     return {'log': {'loglevel': 'warning'}, 'inbounds': inbounds,
@@ -390,7 +406,7 @@ def status():
 
 def overview():
     value = model()
-    return {**status(), 'profiles': [{**{k: p[k] for k in ('id', 'name', 'type', 'group', 'latency_ms', 'engine')}, **details(p)} for p in value['profiles']],
+    return {**status(), 'options': options(value), 'otherTunnels': other_tunnels(), 'profiles': [{**{k: p[k] for k in ('id', 'name', 'type', 'group', 'latency_ms', 'engine')}, **details(p)} for p in value['profiles']],
             'groups': [{**{k: g[k] for k in ('id', 'name', 'subscription')}, 'count': sum(p['group'] == g['id'] for p in value['profiles'])} for g in value['groups']],
             'routes': [{'id': 'all', 'name': 'All traffic', 'active': value['route'] == 'all'},
                        {'id': 'bypass-ru', 'name': 'Bypass Russia', 'active': value['route'] == 'bypass-ru'}]}
@@ -430,7 +446,9 @@ def connect(value=None):
         raise VpnError('The VPN core is not installed')
     if value['mode'] == 'tun' and (not can_tun(binary(profile['engine'])) or not dns_authorized()):
         raise VpnError('Authorize the VPN tunnel in VPN settings first')
-    config = configuration(profile, value['mode'], value['route'])
+    opts = options(value)
+    config = configuration(profile, value['mode'], value['route'], port=opts['port'], http_port=opts['port'] + 1,
+                           dns=opts['dns'], direct=opts['direct'])
     atomic_json(ROOT / 'pending.json', config)
     completed = subprocess.run(command(profile['engine'], ROOT / 'pending.json', True), capture_output=True, timeout=20)
     if completed.returncode:
@@ -467,7 +485,48 @@ def receive(stream, size):
     return result
 
 
+def tcp_ping(profile):
+    """Time to open a connection to the server, the number VPN apps show."""
+    info = details(profile)
+    if not info['server'] or not info['port']:
+        return 0
+    best = 0
+    for _ in range(2):
+        started = time.monotonic()
+        try:
+            socket.create_connection((info['server'], info['port']), timeout=3).close()
+        except OSError:
+            continue
+        ms = max(1, round((time.monotonic() - started) * 1000))
+        best = ms if not best else min(best, ms)
+    return best
+
+
 def latency(profile):
+    """Check the server really works through the core, then report its ping."""
+    full = real_latency(profile)
+    tcp = tcp_ping(profile)
+    # another VPN's tunnel answers connections itself within a millisecond
+    return tcp if tcp > 3 else full
+
+
+def other_tunnels():
+    """Tunnels of other VPN apps (Happ, Hiddify…), which fight with this one."""
+    found = []
+    for path in Path('/sys/class/net').iterdir():
+        name = path.name
+        if name == 'hyprstack-vpn' or not (path / 'tun_flags').exists():
+            continue
+        try:
+            if (path / 'operstate').read_text().strip() == 'down':
+                continue
+        except OSError:
+            pass
+        found.append(name)
+    return sorted(found)
+
+
+def real_latency(profile):
     validate(profile)
     with tempfile.TemporaryDirectory(prefix='.test-', dir=ROOT) as temporary:
         with socket.socket() as reservation:
@@ -635,6 +694,16 @@ def dispatch(action, payload):
                 if payload['id'] not in ('all', 'bypass-ru'):
                     raise VpnError('Choose a routing profile')
                 value['route'] = payload['id']
+            elif action == 'options':
+                current = options(value)
+                if 'dns' in payload:
+                    current['dns'] = payload['dns']
+                if 'port' in payload:
+                    current['port'] = int(payload['port'])
+                if 'direct' in payload:
+                    current['direct'] = [d.strip().lower().removeprefix('https://').removeprefix('http://').split('/')[0]
+                                         for d in payload['direct'] if isinstance(d, str) and d.strip()]
+                value.update(options(current))
             elif action == 'remove-group':
                 group = next((g for g in value['groups'] if g['id'] == payload.get('id')), None)
                 if group is None:
@@ -672,7 +741,7 @@ def dispatch(action, payload):
                         value['selectedProfile'] = value['profiles'][0]['id'] if value['profiles'] else -1
             else:
                 raise VpnError('Unknown VPN action')
-            if connected and action in ('select', 'mode', 'route', 'update'):
+            if connected and action in ('select', 'mode', 'route', 'update', 'options'):
                 connect(value)
             atomic_json(ROOT / 'profiles.json', value)
         return overview()
@@ -680,10 +749,10 @@ def dispatch(action, payload):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('action', choices=('serve', 'status', 'overview', 'install', 'authorize', 'connect', 'disconnect', 'import', 'update', 'select', 'mode', 'route', 'delete', 'test', 'test-all', 'remove-group'))
+    parser.add_argument('action', choices=('serve', 'status', 'overview', 'install', 'authorize', 'connect', 'disconnect', 'import', 'update', 'select', 'mode', 'route', 'delete', 'test', 'test-all', 'remove-group', 'options'))
     args = parser.parse_args()
     try:
-        raw = sys.stdin.read() if args.action in ('import', 'update', 'select', 'mode', 'route', 'delete', 'test', 'test-all', 'remove-group') and not sys.stdin.isatty() else ''
+        raw = sys.stdin.read() if args.action in ('import', 'update', 'select', 'mode', 'route', 'delete', 'test', 'test-all', 'remove-group', 'options') and not sys.stdin.isatty() else ''
         payload = json.loads(raw) if raw.strip() else {}
         print(json.dumps(dispatch(args.action, payload), ensure_ascii=False))
         return 0

@@ -1,10 +1,13 @@
 pragma ComponentBehavior: Bound
 
-// Personal overlay: the VPN app. Opens from the VPN button (dashboard, taskbar)
-// and from the app menu (Super → "VPN"). Paste subscription links (https://…,
-// happ://add/…) or keys (vless://…); several subscriptions can be kept. Servers
-// are cards with flag, ping, address and protocol; a click connects.
+// Personal overlay: the VPN app. Opens from the VPN button (dashboard) and from
+// the app menu (Super → "VPN"). This file holds the logic; the look is one of
+// three designs (VpnDesignOrb/List/Cards.qml), picked with the gear button
+// (VpnSettingsPage.qml, services/VpnPrefs.qml).
 // Backend: services/ManagedVPN.qml → assets/vpn.py.
+//
+// The window is hidden, not destroyed, when closed: destroying a window while
+// its frame is being drawn could crash the shell in the graphics driver.
 
 import QtQuick
 import QtQuick.Controls
@@ -15,6 +18,7 @@ import Hyprstack.I18n
 import qs.components
 import qs.components.controls
 import qs.services
+import "."
 
 FloatingWindow {
     id: root
@@ -24,22 +28,42 @@ FloatingWindow {
 
     title: "VPN"
     color: Colours.palette.m3surface
-    implicitWidth: 1000
+    implicitWidth: 1040
     implicitHeight: 760
-    minimumSize.width: 560
-    minimumSize.height: 520
+    minimumSize.width: 480
+    minimumSize.height: 560
 
+    // ---- State ----
     readonly property var profiles: ManagedVPN.profiles
     readonly property var groups: ManagedVPN.data.groups ?? []
+    readonly property var options: ManagedVPN.data.options ?? ({dns: "cloudflare", port: 2080, direct: []})
     readonly property string selectedId: String(ManagedVPN.data.selectedProfile ?? "")
     readonly property var selected: profiles.find(p => String(p.id) === selectedId) ?? null
+    readonly property bool connected: VPN.connected
     readonly property bool working: ManagedVPN.busy || VPN.connecting || VPN.disconnecting || steps.length > 0
     readonly property bool bypassRu: (ManagedVPN.routes.find(r => r.active)?.id ?? "all") === "bypass-ru"
+    readonly property string mode: ManagedVPN.data.mode ?? "tun"
+    // tunnels of other VPN apps (Happ…) that fight with this one
+    readonly property var otherTunnels: ManagedVPN.data.otherTunnels ?? []
     // "" = servers of all subscriptions
     property string groupFilter: ""
-    readonly property var shown: groupFilter ? profiles.filter(p => p.group === groupFilter) : profiles
+    property bool settingsOpen: false
+    readonly property var shown: {
+        const list = (groupFilter ? profiles.filter(p => p.group === groupFilter) : profiles).slice();
+        if (VpnPrefs.sort === "name")
+            list.sort((a, b) => root.describe(a.name).city.localeCompare(root.describe(b.name).city));
+        else if (VpnPrefs.sort === "ping")
+            list.sort((a, b) => root.pingRank(a.latency_ms) - root.pingRank(b.latency_ms));
+        return list;
+    }
+    readonly property var fastest: profiles.filter(p => p.latency_ms > 0).sort((a, b) => a.latency_ms - b.latency_ms)[0] ?? null
+    readonly property string statusText: stepLabel || (working ? l("Working…", "Подождите…")
+        : connected ? l("Connected", "Подключено") + (selected ? " · " + describe(selected.name).city : "")
+        : profiles.length ? l("Disconnected", "Отключено") : l("Add a subscription to start", "Добавьте подписку, чтобы начать"))
 
-    // Pending actions run one after another: [{command, payload, label}].
+    signal linkAdded
+
+    // ---- Actions run one after another: [{command, payload, label}] ----
     property var steps: []
     property string stepLabel: ""
     // Only errors of actions started in this window are shown.
@@ -59,37 +83,81 @@ FloatingWindow {
         root.stepLabel = step.label ?? "";
         ManagedVPN.run(step.command, step.payload ?? {});
     }
-    // Make sure the engine is there and the tunnel is allowed, then connect.
+    function installStep(): var {
+        return {command: "install", label: l("Downloading the VPN engine…", "Скачиваю движок VPN…")};
+    }
+    // The tunnel needs a one-time permission; proxy mode does not.
     function connectSteps(): var {
-        return [
-            {command: "install", label: root.l("Downloading the VPN engine…", "Скачиваю движок VPN…")},
-            {command: "authorize", label: root.l("Allow the VPN tunnel: enter your password", "Разрешите VPN-туннель: введите пароль")},
-            {command: "connect", label: root.l("Connecting…", "Подключаюсь…")}
-        ];
+        const list = [root.installStep()];
+        if (root.mode === "tun")
+            list.push({command: "authorize", label: l("Allow the VPN tunnel: enter your password", "Разрешите VPN-туннель: введите пароль")});
+        list.push({command: "connect", label: l("Connecting…", "Подключаюсь…")});
+        return list;
     }
     function pingStep(group: string): var {
-        return {command: "test-all", payload: group ? {group} : {}, label: root.l("Checking ping…", "Проверяю пинг…")};
+        return {command: "test-all", payload: group ? {group} : {}, label: l("Checking ping…", "Проверяю пинг…")};
     }
     function choose(profile: var): void {
-        if (root.working)
+        if (root.working || !profile)
             return;
-        if (String(profile.id) === root.selectedId && VPN.connected)
+        if (String(profile.id) === root.selectedId && root.connected)
             return;
         // Selecting while connected reconnects on its own.
-        const pick = {command: "select", payload: {id: profile.id}, label: root.l("Switching server…", "Переключаю сервер…")};
-        root.runSteps(VPN.connected ? [pick] : [pick, ...root.connectSteps()]);
+        const pick = {command: "select", payload: {id: profile.id}, label: l("Switching server…", "Переключаю сервер…")};
+        root.runSteps(root.connected ? [pick] : [pick, ...root.connectSteps()]);
     }
-    function addLink(): void {
-        const text = linkInput.text.trim();
+    function toggleConnect(): void {
+        if (root.working)
+            return;
+        if (root.connected) {
+            VPN.disconnect();
+            return;
+        }
+        if (VpnPrefs.connectFastest && root.fastest && String(root.fastest.id) !== root.selectedId)
+            root.choose(root.fastest);
+        else if (root.selected)
+            root.runSteps(root.connectSteps());
+    }
+    function addLink(text: string): void {
+        text = String(text ?? "").trim();
         if (!text || root.working)
             return;
         const subscription = /^(https?:\/\/|happ:\/\/add\/)\S+$/i.test(text);
         root.runSteps([
-            {command: "import", payload: {text}, label: subscription ? root.l("Loading the subscription…", "Загружаю подписку…") : root.l("Adding the key…", "Добавляю ключ…")},
-            {command: "install", label: root.l("Downloading the VPN engine…", "Скачиваю движок VPN…")},
+            {command: "import", payload: {text}, label: subscription ? l("Loading the subscription…", "Загружаю подписку…") : l("Adding the key…", "Добавляю ключ…")},
+            root.installStep(),
             root.pingStep(""),
-            ...(VPN.connected ? [] : root.connectSteps().slice(1))
+            ...(root.connected ? [] : root.connectSteps().slice(1))
         ]);
+    }
+    function pingAll(): void {
+        root.runSteps([root.installStep(), root.pingStep(root.groupFilter)]);
+    }
+    function updateGroup(id: string): void {
+        root.runSteps([{command: "update", payload: id ? {id} : {}, label: l("Updating the subscription…", "Обновляю подписку…")}, root.pingStep(id)]);
+    }
+    function removeGroup(id: string): void {
+        if (root.groupFilter === id)
+            root.groupFilter = "";
+        root.runSteps([{command: "remove-group", payload: {id}, label: l("Removing…", "Удаляю…")}]);
+    }
+    function deleteServer(id: string): void {
+        root.runSteps([{command: "delete", payload: {id}, label: l("Deleting…", "Удаляю…")}]);
+    }
+    function setMode(value: string): void {
+        root.runSteps([{command: "mode", payload: {mode: value}, label: l("Applying…", "Применяю…")}]);
+    }
+    function setBypassRu(on: bool): void {
+        root.runSteps([{command: "route", payload: {id: on ? "bypass-ru" : "all"}, label: l("Applying…", "Применяю…")}]);
+    }
+    function setOptions(change: var): void {
+        root.runSteps([{command: "options", payload: change, label: l("Applying…", "Применяю…")}]);
+    }
+    function maximize(): void {
+        Hypr.dispatch(Hypr.usingLua ? 'hl.dsp.window.fullscreen({ mode = "maximized" })' : "fullscreen 1");
+    }
+    function close(): void {
+        root.visible = false;
     }
 
     // ---- Server names: "🇩🇪 Франкфурт" → flag, city and country ----
@@ -133,10 +201,13 @@ FloatingWindow {
             }
         }
         const country = root.countries[code];
+        const countryName = country ? country[root.ru ? 1 : 0] : code;
         let city = rest.join("").replace(/^[\s|,·\-–—:]+|[\s|,·\-–—:]+$/g, "");
         if (!city)
-            city = country ? country[root.ru ? 1 : 0] : String(name ?? "");
-        return {flag, city, country: country ? country[root.ru ? 1 : 0] : code};
+            city = countryName || String(name ?? "");
+        // "🇩🇪 Германия 🔥": the name already says the country
+        const repeats = countryName && city.toLowerCase().startsWith(countryName.toLowerCase());
+        return {flag, city, country: repeats ? "" : countryName};
     }
     function groupName(id: string): string {
         return root.groups.find(g => g.id === id)?.name ?? "";
@@ -148,9 +219,15 @@ FloatingWindow {
         const word = d === 1 && h !== 11 ? "сервер" : d >= 2 && d <= 4 && (h < 12 || h > 14) ? "сервера" : "серверов";
         return `${n} ${word}`;
     }
+    function protocolOf(p: var): string {
+        return p?.protocol ?? String(p?.type ?? "").toUpperCase();
+    }
 
-    // ping colours: green fast, amber medium, red slow or no answer
+    // ---- Ping: green fast, amber medium, red slow or no answer ----
     readonly property color good: "#34d399"
+    function pingRank(ms: int): int {
+        return ms > 0 ? ms : ms === 0 ? 1000000 : 999999;
+    }
     function pingColour(ms: int): color {
         if (ms < 0)
             return Colours.palette.m3outline;
@@ -162,16 +239,32 @@ FloatingWindow {
         if (ms < 0)
             return "—";
         if (ms === 0)
-            return root.l("no answer", "нет ответа");
-        return ms + root.l(" ms", " мс");
+            return l("no answer", "нет ответа");
+        return ms + l(" ms", " мс");
+    }
+    // 0–3 signal bars
+    function pingBars(ms: int): int {
+        return ms <= 0 ? 0 : ms < 120 ? 3 : ms < 300 ? 2 : 1;
     }
 
-    onVisibleChanged: {
-        if (!visible) {
-            ManagedVPN.window = null;
-            destroy();
-        }
+    function onOpened(): void {
+        if (root.working || root.profiles.length === 0)
+            return;
+        const list = [];
+        if (VpnPrefs.updateOnOpen && root.groups.some(g => g.subscription))
+            list.push({command: "update", payload: {}, label: l("Updating subscriptions…", "Обновляю подписки…")});
+        if (VpnPrefs.pingOnOpen)
+            list.push(root.installStep(), root.pingStep(""));
+        if (list.length)
+            root.runSteps(list);
     }
+    onVisibleChanged: {
+        if (visible)
+            root.onOpened();
+        else
+            root.settingsOpen = false;
+    }
+    Component.onCompleted: Qt.callLater(root.onOpened)
 
     Connections {
         target: ManagedVPN
@@ -179,7 +272,7 @@ FloatingWindow {
             if (!root.steps.length || root.steps[0].command !== command)
                 return;
             if (command === "import" && success)
-                linkInput.text = "";
+                root.linkAdded();
             // A failed ping does not stop the chain; any other failure does.
             if (!success && command !== "test-all") {
                 root.failure = ManagedVPN.error || root.l("The action did not complete", "Не получилось выполнить действие");
@@ -194,530 +287,63 @@ FloatingWindow {
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: Tokens.padding.large * 1.5
-        spacing: Tokens.spacing.large
+        visible: !root.settingsOpen
+        spacing: 0
 
-        // ---- Status and the main button ----
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Tokens.spacing.large
-
-            StyledRect {
-                implicitWidth: 56
-                implicitHeight: 56
-                radius: Tokens.rounding.large
-                color: VPN.connected ? Colours.palette.m3primary : Colours.palette.m3surfaceContainerHigh
-
-                MaterialIcon {
-                    anchors.centerIn: parent
-                    text: VPN.connected ? "shield_lock" : "shield"
-                    fill: VPN.connected ? 1 : 0
-                    fontStyle: Tokens.font.icon.large
-                    color: VPN.connected ? Colours.palette.m3onPrimary : Colours.palette.m3onSurfaceVariant
-                }
-            }
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 2
-                StyledText {
-                    text: "VPN"
-                    font: Tokens.font.headline.small
-                }
-                StyledText {
-                    Layout.fillWidth: true
-                    text: root.stepLabel || (root.working ? root.l("Working…", "Подождите…")
-                        : VPN.connected ? root.l("Connected", "Подключено") + (root.selected ? " · " + root.describe(root.selected.name).city : "")
-                        : root.profiles.length ? root.l("Disconnected", "Отключено") : root.l("Add a subscription to start", "Добавьте подписку, чтобы начать"))
-                    color: VPN.connected ? Colours.palette.m3primary : Colours.palette.m3onSurfaceVariant
-                    elide: Text.ElideRight
-                }
-            }
-
-            BusyIndicator {
-                visible: root.working
-                running: visible
-                implicitWidth: 32
-                implicitHeight: 32
-            }
-
-            IconTextButton {
-                objectName: "vpnConnectButton"
-                icon: VPN.connected ? "power_settings_new" : "bolt"
-                text: VPN.connected ? root.l("Disconnect", "Отключить") : root.l("Connect", "Подключить")
-                disabled: root.working || (!VPN.connected && !root.selected)
-                onClicked: VPN.connected ? VPN.disconnect() : root.runSteps(root.connectSteps())
-            }
-
-            IconButton {
-                type: IconButton.Text
-                icon: "close"
-                onClicked: root.visible = false
-            }
-        }
-
-        StyledText {
-            Layout.fillWidth: true
-            visible: root.failure.length > 0 && !root.working
-            text: root.failure
-            color: Colours.palette.m3error
-            wrapMode: Text.Wrap
-            textFormat: Text.PlainText
-        }
-
-        // ---- Subscriptions ----
+        // Another VPN app keeps its own tunnel up: both fight over the traffic.
         StyledRect {
             Layout.fillWidth: true
-            implicitHeight: subsColumn.implicitHeight + Tokens.padding.large * 2
-            radius: Tokens.rounding.large
-            color: Colours.tPalette.m3surfaceContainer
+            visible: root.otherTunnels.length > 0
+            implicitHeight: conflictRow.implicitHeight + Tokens.padding.medium * 2
+            color: Qt.alpha(Colours.palette.m3error, 0.16)
 
-            ColumnLayout {
-                id: subsColumn
+            RowLayout {
+                id: conflictRow
 
                 anchors.fill: parent
-                anchors.margins: Tokens.padding.large
+                anchors.leftMargin: Tokens.padding.large
+                anchors.rightMargin: Tokens.padding.large
                 spacing: Tokens.spacing.medium
 
+                MaterialIcon {
+                    text: "warning"
+                    color: Colours.palette.m3error
+                }
                 StyledText {
-                    text: root.l("Subscriptions", "Подписки")
-                    font: Tokens.font.title.small
-                }
-
-                Flow {
                     Layout.fillWidth: true
-                    spacing: Tokens.spacing.small
-                    visible: root.groups.length > 0
-
-                    Chip {
-                        groupId: ""
-                        label: root.l("All servers", "Все серверы")
-                        count: root.profiles.length
-                    }
-
-                    Repeater {
-                        model: root.groups
-
-                        Chip {
-                            required property var modelData
-                            groupId: modelData.id
-                            label: modelData.name
-                            count: modelData.count ?? 0
-                            subscription: modelData.subscription
-                        }
-                    }
-                }
-
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Tokens.spacing.small
-
-                    StyledTextField {
-                        id: linkInput
-                        objectName: "vpnImportInput"
-                        Layout.fillWidth: true
-                        enabled: !root.working
-                        placeholderText: root.l("Paste a subscription link (https://…) or a key (vless://…), like in Happ",
-                            "Вставьте ссылку подписки (https://…) или ключ (vless://…), как в Happ")
-                        inputMethodHints: Qt.ImhSensitiveData | Qt.ImhNoPredictiveText | Qt.ImhNoAutoUppercase
-                        onAccepted: root.addLink()
-                    }
-                    IconTextButton {
-                        objectName: "vpnImportButton"
-                        icon: "add_link"
-                        text: root.l("Add", "Добавить")
-                        disabled: root.working || linkInput.text.trim().length === 0
-                        onClicked: root.addLink()
-                    }
+                    text: root.l(`Another VPN is on (${root.otherTunnels.join(", ")}${root.otherTunnels.some(t => t.startsWith("happ")) ? " — Happ" : ""}). Two VPNs fight over the traffic: turn it off so ping and connection work right.`,
+                        `Включён другой VPN (${root.otherTunnels.join(", ")}${root.otherTunnels.some(t => t.startsWith("happ")) ? " — это Happ" : ""}). Два VPN мешают друг другу: выключите его, тогда пинг и подключение будут работать правильно.`)
+                    color: Colours.palette.m3onSurface
+                    wrapMode: Text.Wrap
                 }
             }
         }
 
-        // ---- Servers ----
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Tokens.spacing.small
-
-            StyledText {
-                Layout.fillWidth: true
-                text: root.l("Servers", "Серверы") + (root.shown.length ? " · " + root.shown.length : "")
-                font: Tokens.font.title.medium
-            }
-            IconTextButton {
-                type: TextButton.Tonal
-                icon: "network_ping"
-                text: root.l("Check ping", "Проверить пинг")
-                visible: root.shown.length > 0
-                disabled: root.working
-                onClicked: root.runSteps([{command: "install", label: root.l("Downloading the VPN engine…", "Скачиваю движок VPN…")}, root.pingStep(root.groupFilter)])
-            }
-        }
-
-        Item {
+        Loader {
             Layout.fillWidth: true
             Layout.fillHeight: true
-
-            StyledText {
-                anchors.centerIn: parent
-                width: parent.width - Tokens.padding.large * 2
-                visible: root.shown.length === 0
-                horizontalAlignment: Text.AlignHCenter
-                wrapMode: Text.Wrap
-                text: root.l("No servers yet. Paste the subscription link from your VPN provider above: the same one you added to Happ.",
-                    "Серверов пока нет. Вставьте выше ссылку подписки от вашего VPN — ту же, что добавляли в Happ.")
-                color: Colours.palette.m3onSurfaceVariant
-            }
-
-            GridView {
-                id: grid
-
-                readonly property int columns: Math.max(1, Math.floor(width / 440))
-
-                anchors.fill: parent
-                clip: true
-                cellWidth: Math.floor(width / columns)
-                cellHeight: 214
-                model: root.shown
-                boundsBehavior: Flickable.StopAtBounds
-                ScrollBar.vertical: ScrollBar {}
-
-                delegate: Item {
-                    id: cell
-
-                    required property var modelData
-                    readonly property var info: root.describe(modelData.name)
-                    readonly property bool current: String(modelData.id) === root.selectedId
-                    readonly property bool live: current && VPN.connected
-                    readonly property int ms: modelData.latency_ms ?? -1
-
-                    width: grid.cellWidth
-                    height: grid.cellHeight
-
-                    StyledRect {
-                        id: card
-
-                        anchors.fill: parent
-                        anchors.margins: Tokens.spacing.small
-                        radius: Tokens.rounding.large
-                        color: Colours.tPalette.m3surfaceContainer
-                        border.width: cell.current ? 2 : 1
-                        border.color: cell.current ? Colours.palette.m3primary : Qt.alpha(Colours.palette.m3outlineVariant, 0.6)
-
-                        // warm glow on the selected server, as in the design
-                        Rectangle {
-                            anchors.fill: parent
-                            anchors.margins: card.border.width
-                            radius: card.radius - card.border.width
-                            opacity: cell.current ? 1 : 0
-                            gradient: Gradient {
-                                GradientStop { position: 0; color: Qt.alpha(Colours.palette.m3primary, 0.12) }
-                                GradientStop { position: 1; color: "transparent" }
-                            }
-
-                            Behavior on opacity {
-                                Anim {}
-                            }
-                        }
-
-                        StateLayer {
-                            radius: card.radius
-                            disabled: root.working
-                            onClicked: root.choose(cell.modelData)
-                        }
-
-                        ColumnLayout {
-                            anchors.fill: parent
-                            anchors.margins: Tokens.padding.large * 1.2
-                            spacing: Tokens.spacing.medium
-
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: Tokens.spacing.large
-
-                                StyledRect {
-                                    implicitWidth: 60
-                                    implicitHeight: 60
-                                    radius: Tokens.rounding.medium
-                                    color: Colours.palette.m3surfaceContainerHigh
-                                    border.width: 1
-                                    border.color: Qt.alpha(Colours.palette.m3outlineVariant, 0.5)
-
-                                    Text {
-                                        anchors.centerIn: parent
-                                        visible: cell.info.flag.length > 0
-                                        text: cell.info.flag
-                                        font.family: "Noto Color Emoji"
-                                        font.pixelSize: 32
-                                    }
-                                    MaterialIcon {
-                                        anchors.centerIn: parent
-                                        visible: cell.info.flag.length === 0
-                                        text: "public"
-                                        fontStyle: Tokens.font.icon.large
-                                        color: Colours.palette.m3onSurfaceVariant
-                                    }
-                                }
-
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    Layout.preferredWidth: 1
-                                    Layout.minimumWidth: 0
-                                    spacing: 2
-
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Layout.minimumWidth: 0
-                                        spacing: Tokens.spacing.small
-
-                                        StyledText {
-                                            Layout.fillWidth: true
-                                            Layout.minimumWidth: 40
-                                            Layout.maximumWidth: implicitWidth
-                                            text: cell.info.city
-                                            font: Tokens.font.title.large
-                                            elide: Text.ElideRight
-                                        }
-                                        Badge {
-                                            visible: cell.ms > 0 && cell.ms < 120
-                                            text: root.l("FAST", "БЫСТРЫЙ")
-                                            fill: Colours.palette.m3primary
-                                            ink: Colours.palette.m3onPrimary
-                                        }
-                                        Badge {
-                                            visible: cell.live
-                                            text: root.l("ON", "ВКЛ")
-                                            fill: root.good
-                                            ink: "#06281b"
-                                        }
-                                        Item {
-                                            Layout.fillWidth: true
-                                            Layout.preferredWidth: 0
-                                        }
-                                    }
-                                    StyledText {
-                                        Layout.fillWidth: true
-                                        Layout.preferredWidth: 1
-                                        text: cell.info.country || root.groupName(cell.modelData.group)
-                                        color: Colours.palette.m3onSurfaceVariant
-                                        elide: Text.ElideRight
-                                    }
-                                }
-
-                                // ping pill
-                                StyledRect {
-                                    implicitWidth: pingRow.implicitWidth + Tokens.padding.large * 2
-                                    implicitHeight: 36
-                                    radius: Tokens.rounding.full
-                                    color: Qt.alpha(root.pingColour(cell.ms), 0.12)
-                                    border.width: 1
-                                    border.color: Qt.alpha(root.pingColour(cell.ms), 0.35)
-
-                                    RowLayout {
-                                        id: pingRow
-
-                                        anchors.centerIn: parent
-                                        spacing: Tokens.spacing.small
-
-                                        Rectangle {
-                                            implicitWidth: 8
-                                            implicitHeight: 8
-                                            radius: 4
-                                            color: root.pingColour(cell.ms)
-                                        }
-                                        StyledText {
-                                            text: root.pingText(cell.ms)
-                                            font: Tokens.font.mono.medium
-                                            color: root.pingColour(cell.ms)
-                                        }
-                                    }
-                                }
-                            }
-
-                            Rectangle {
-                                Layout.fillWidth: true
-                                implicitHeight: 1
-                                color: Qt.alpha(Colours.palette.m3outlineVariant, 0.6)
-                            }
-
-                            InfoLine {
-                                label: root.l("IP address:", "IP-адрес:")
-                                value: cell.modelData.server ?? ""
-                                mono: true
-                            }
-                            InfoLine {
-                                label: root.l("Protocol:", "Протокол:")
-                                value: cell.modelData.protocol ?? String(cell.modelData.type ?? "").toUpperCase()
-                                accent: true
-                            }
-                            InfoLine {
-                                visible: root.groups.length > 1 && !root.groupFilter
-                                label: root.l("Subscription:", "Подписка:")
-                                value: root.groupName(cell.modelData.group)
-                            }
-
-                            Item {
-                                Layout.fillHeight: true
-                            }
-                        }
-
-                        IconButton {
-                            anchors.right: parent.right
-                            anchors.bottom: parent.bottom
-                            anchors.margins: Tokens.spacing.small
-                            type: IconButton.Text
-                            icon: "delete"
-                            visible: !cell.live && hoverWatch.hovered
-                            disabled: root.working
-                            onClicked: root.runSteps([{command: "delete", payload: {id: cell.modelData.id}, label: root.l("Deleting…", "Удаляю…")}])
-                            ToolTip.visible: hovered
-                            ToolTip.text: root.l("Delete server", "Удалить сервер")
-                        }
-
-                        HoverHandler {
-                            id: hoverWatch
-                        }
-                    }
-                }
-            }
-        }
-
-        // ---- Options ----
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Tokens.spacing.large
-
-            StyledText {
-                text: root.l("Russian sites without VPN", "Российские сайты без VPN")
-            }
-            StyledSwitch {
-                checked: root.bypassRu
-                enabled: !root.working
-                onToggled: root.runSteps([{command: "route", payload: {id: checked ? "bypass-ru" : "all"}, label: root.l("Applying…", "Применяю…")}])
-            }
-            Item {
-                Layout.fillWidth: true
-            }
-            StyledText {
-                text: root.l("Connect after login", "Подключаться при входе")
-            }
-            StyledSwitch {
-                checked: GlobalConfig.utilities.vpn.enabled
-                enabled: !root.working
-                onToggled: GlobalConfig.utilities.vpn.enabled = checked
-            }
+            sourceComponent: VpnPrefs.design === "list" ? listDesign : VpnPrefs.design === "cards" ? cardsDesign : orbDesign
         }
     }
 
-    // A subscription: click shows only its servers; refresh and remove buttons.
-    component Chip: StyledRect {
-        id: chip
-
-        required property string groupId
-        required property string label
-        required property int count
-        property bool subscription: false
-        readonly property bool active: root.groupFilter === groupId
-
-        implicitWidth: chipRow.implicitWidth + Tokens.padding.large * 2
-        implicitHeight: 40
-        radius: Tokens.rounding.full
-        color: active ? Colours.palette.m3primary : Colours.palette.m3surfaceContainerHigh
-
-        StateLayer {
-            radius: chip.radius
-            color: chip.active ? Colours.palette.m3onPrimary : Colours.palette.m3onSurface
-            onClicked: root.groupFilter = chip.groupId
-        }
-
-        RowLayout {
-            id: chipRow
-
-            anchors.centerIn: parent
-            spacing: Tokens.spacing.small
-
-            MaterialIcon {
-                text: chip.groupId ? (chip.subscription ? "cloud_sync" : "key") : "dns"
-                color: chip.active ? Colours.palette.m3onPrimary : Colours.palette.m3onSurfaceVariant
-            }
-            StyledText {
-                text: chip.label
-                color: chip.active ? Colours.palette.m3onPrimary : Colours.palette.m3onSurface
-            }
-            StyledText {
-                text: root.serversWord(chip.count)
-                font: Tokens.font.label.medium
-                color: chip.active ? Qt.alpha(Colours.palette.m3onPrimary, 0.75) : Colours.palette.m3onSurfaceVariant
-            }
-            IconButton {
-                visible: chip.groupId.length > 0 && chip.subscription
-                type: IconButton.Text
-                icon: "sync"
-                disabled: root.working
-                implicitWidth: 28
-                implicitHeight: 28
-                onClicked: root.runSteps([{command: "update", payload: {id: chip.groupId}, label: root.l("Updating the subscription…", "Обновляю подписку…")}, root.pingStep(chip.groupId)])
-                ToolTip.visible: hovered
-                ToolTip.text: root.l("Update", "Обновить")
-            }
-            IconButton {
-                visible: chip.groupId.length > 0
-                type: IconButton.Text
-                icon: "close"
-                disabled: root.working
-                implicitWidth: 28
-                implicitHeight: 28
-                onClicked: {
-                    if (root.groupFilter === chip.groupId)
-                        root.groupFilter = "";
-                    root.runSteps([{command: "remove-group", payload: {id: chip.groupId}, label: root.l("Removing…", "Удаляю…")}]);
-                }
-                ToolTip.visible: hovered
-                ToolTip.text: root.l("Remove subscription", "Удалить подписку")
-            }
-        }
+    Component {
+        id: orbDesign
+        VpnDesignOrb { app: root }
+    }
+    Component {
+        id: listDesign
+        VpnDesignList { app: root }
+    }
+    Component {
+        id: cardsDesign
+        VpnDesignCards { app: root }
     }
 
-    component Badge: StyledRect {
-        property alias text: badgeText.text
-        property color fill
-        property color ink
-
-        implicitWidth: badgeText.implicitWidth + Tokens.padding.medium * 2
-        implicitHeight: badgeText.implicitHeight + 6
-        radius: Tokens.rounding.small
-        color: fill
-
-        StyledText {
-            id: badgeText
-
-            anchors.centerIn: parent
-            color: parent.ink
-            font: Tokens.font.label.builders.small.weight(Font.Bold).build()
-        }
-    }
-
-    component InfoLine: RowLayout {
-        property string label
-        property string value
-        property bool mono: false
-        property bool accent: false
-
-        Layout.fillWidth: true
-        spacing: Tokens.spacing.medium
-
-        StyledText {
-            text: parent.label
-            color: Colours.palette.m3onSurfaceVariant
-        }
-        StyledText {
-            Layout.fillWidth: true
-            Layout.preferredWidth: 1
-            Layout.minimumWidth: 0
-            horizontalAlignment: Text.AlignRight
-            text: parent.value
-            elide: Text.ElideMiddle
-            font: parent.mono ? Tokens.font.mono.medium : Tokens.font.body.medium
-            color: parent.accent ? Colours.palette.m3primary : Colours.palette.m3onSurface
+    Loader {
+        anchors.fill: parent
+        active: root.settingsOpen
+        sourceComponent: Component {
+            VpnSettingsPage { app: root }
         }
     }
 }
