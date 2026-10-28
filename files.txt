@@ -27,6 +27,7 @@
 ~ .config/systemd/user/hyprstack.service.d/10-autostart.conf
 ~ .config/systemd/user/hyprstack.service.d/20-personal-shell.conf
 .config/systemd/user/hyprstack-session.service.d/10-personal-shell.conf
+.config/systemd/user/hyprstack-vpn.service.d/10-personal-shell.conf
 .config/systemd/user/hyprstack-nightlight-schedule.service
 .config/systemd/user/hyprstack-nightlight-schedule.timer
 
@@ -82,6 +83,7 @@
 .local/share/hyprstack-personal/shell/modules/vpn/VpnToolButtons.qml
 .local/share/hyprstack-personal/shell/modules/vpn/VpnGroupChips.qml
 .local/share/hyprstack-personal/shell/services/VpnPrefs.qml
+.local/share/hyprstack-personal/shell/services/ManagedVPN.qml
 .local/share/applications/hyprstack-vpn.desktop
 .local/share/hyprstack-personal/shell/modules/osd/Content.qml
 .local/share/hyprstack-personal/shell/modules/nexus/PageRegistry.qml

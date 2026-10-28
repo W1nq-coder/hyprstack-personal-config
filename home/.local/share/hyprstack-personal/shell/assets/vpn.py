@@ -284,7 +284,7 @@ def options(value):
     return {'dns': value.get('dns') if value.get('dns') in DNS_SERVERS else 'cloudflare', 'port': port, 'direct': direct}
 
 
-def configuration(profile, mode='proxy', route='all', port=2080, http_port=2081, dns='cloudflare', direct=()):
+def configuration(profile, mode='proxy', route='all', port=2080, http_port=2081, dns='cloudflare', direct=(), exclude=(), interface=''):
     outbound = copy.deepcopy(profile['outbound'])
     dns_ip = DNS_SERVERS.get(dns, '1.1.1.1')
     outbound['tag'] = 'vpn'
@@ -302,6 +302,9 @@ def configuration(profile, mode='proxy', route='all', port=2080, http_port=2081,
             inbounds.append({'type': 'tun', 'tag': 'tun', 'interface_name': 'hyprstack-vpn',
                              'address': ['172.19.0.1/30', 'fdfe:dcba:9876::1/126'], 'mtu': 1500,
                              'auto_route': True, 'auto_redirect': True, 'strict_route': True, 'stack': 'mixed'})
+            if exclude:
+                # the VPN server itself must stay outside the tunnel
+                inbounds[-1]['route_exclude_address'] = list(exclude)
         rules = [{'action': 'sniff'}, {'protocol': 'dns', 'action': 'hijack-dns'}, {'ip_cidr': private, 'outbound': 'direct'}]
         direct = {'type': 'direct', 'tag': 'direct'}
         dns_rules = []
@@ -314,11 +317,17 @@ def configuration(profile, mode='proxy', route='all', port=2080, http_port=2081,
                          for key, values in bypass.items() if key != 'ip_cidr']
         for key, values in bypass.items():
             rules.append({key: values, 'outbound': 'direct'})
+        dns_section = {'servers': [{'type': 'https', 'tag': 'remote', 'server': dns_ip, 'detour': 'vpn'},
+                                   {'type': 'udp', 'tag': 'bootstrap', 'server': '1.1.1.1'}], 'final': 'remote', 'rules': dns_rules}
+        if mode == 'tun':
+            # Most VPN servers have no IPv6, and apps that get an IPv6 address
+            # through the tunnel just hang. VPN apps answer with IPv4 only too.
+            dns_section['strategy'] = 'ipv4_only'
         return {'log': {'level': 'warn', 'timestamp': False}, 'inbounds': inbounds,
                 'outbounds': [outbound, direct],
-                'dns': {'servers': [{'type': 'https', 'tag': 'remote', 'server': dns_ip, 'detour': 'vpn'},
-                                    {'type': 'udp', 'tag': 'bootstrap', 'server': '1.1.1.1'}], 'final': 'remote', 'rules': dns_rules},
-                'route': {'auto_detect_interface': True, 'default_domain_resolver': 'bootstrap', 'rules': rules, 'final': 'vpn'}}
+                'dns': dns_section,
+                'route': {**({'default_interface': interface} if interface else {'auto_detect_interface': True}),
+                          'default_domain_resolver': 'bootstrap', 'rules': rules, 'final': 'vpn'}}
     inbounds = [{'tag': 'socks', 'listen': '127.0.0.1', 'port': port, 'protocol': 'socks', 'settings': {'auth': 'noauth', 'udp': True}}]
     if http_port:
         inbounds.append({'tag': 'http', 'listen': '127.0.0.1', 'port': http_port, 'protocol': 'http'})
@@ -347,6 +356,47 @@ def configuration(profile, mode='proxy', route='all', port=2080, http_port=2081,
             'outbounds': [outbound, direct, {'tag': 'dns', 'protocol': 'dns'}],
             'dns': {'servers': dns_servers, 'queryStrategy': 'UseIP'},
             'routing': {'domainStrategy': 'IPIfNonMatch', 'rules': rules}}
+
+
+def free_port():
+    with socket.socket() as reservation:
+        reservation.bind(('127.0.0.1', 0))
+        return reservation.getsockname()[1]
+
+
+def pinned(profile):
+    """Xray profile with server addresses resolved to IPs, and those IPs.
+
+    The tunnel catches every DNS query, so Xray must not look up its own
+    server through it. TLS names and hosts keep the original domain.
+    """
+    profile = copy.deepcopy(profile)
+    outbound = profile['outbound']
+    settings = outbound.get('settings', {})
+    stream = outbound.setdefault('streamSettings', {})
+    ips = []
+    for server in settings.get('vnext', []) + settings.get('servers', []) + ([settings] if 'address' in settings else []):
+        host = str(server.get('address', ''))
+        try:
+            socket.inet_pton(socket.AF_INET6 if ':' in host else socket.AF_INET, host)
+            ip = host
+        except OSError:
+            try:
+                infos = socket.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+            except OSError as error:
+                raise VpnError('The VPN server address could not be resolved') from error
+            ip = sorted(infos, key=lambda info: info[0] != socket.AF_INET)[0][4][0]
+            server['address'] = ip
+            for key in ('tlsSettings', 'realitySettings'):
+                if key in stream and not stream[key].get('serverName'):
+                    stream[key]['serverName'] = host
+            for key in ('wsSettings', 'httpupgradeSettings', 'xhttpSettings'):
+                if key in stream and not stream[key].get('host') and not stream[key].get('headers', {}).get('Host'):
+                    stream[key]['host'] = host
+        ips.append(ip + ('/128' if ':' in ip else '/32'))
+    if not ips:
+        raise VpnError('The profile configuration is invalid or unsupported')
+    return profile, ips
 
 
 def command(engine, config, check=False):
@@ -428,11 +478,11 @@ def service(action):
         raise VpnError('The VPN service could not complete the operation')
 
 
-def ready():
+def ready(port=2080):
     if not status()['connected']:
         return False
     try:
-        with socket.create_connection(('127.0.0.1', 2080), timeout=.5) as stream:
+        with socket.create_connection(('127.0.0.1', port), timeout=.5) as stream:
             stream.sendall(b'\x05\x01\x00')
             return stream.recv(2) == b'\x05\x00'
     except OSError:
@@ -444,24 +494,51 @@ def connect(value=None):
     profile = selected(value)
     if not binary(profile['engine']).is_file():
         raise VpnError('The VPN core is not installed')
-    if value['mode'] == 'tun' and (not can_tun(binary(profile['engine'])) or not dns_authorized()):
+    # Xray's own tunnel cannot share routes with other VPN apps and often fails
+    # to start, so in tunnel mode sing-box holds the tunnel and hands the
+    # traffic to Xray, which only talks to the server.
+    chain = value['mode'] == 'tun' and profile['engine'] == 'xray'
+    tunnel_engine = 'sing-box' if chain else profile['engine']
+    if value['mode'] == 'tun' and (not binary(tunnel_engine).is_file() or not can_tun(binary(tunnel_engine)) or not dns_authorized()):
         raise VpnError('Authorize the VPN tunnel in VPN settings first')
     opts = options(value)
-    config = configuration(profile, value['mode'], value['route'], port=opts['port'], http_port=opts['port'] + 1,
-                           dns=opts['dns'], direct=opts['direct'])
+    session = {k: profile[k] for k in ('id', 'name', 'type', 'engine')} | {'mode': value['mode']}
+    core = None
+    # With another VPN app running, its tunnel looks like the main connection;
+    # sites that skip the VPN must still go out through Wi-Fi or cable.
+    interface = physical_interface() if other_tunnels() else ''
+    if chain:
+        backend, exclude = pinned(profile)
+        session['corePort'] = free_port()
+        core = configuration(backend, 'proxy', 'all', port=session['corePort'], http_port=0)
+        front = {'engine': 'sing-box', 'outbound': {'type': 'socks', 'server': '127.0.0.1', 'server_port': session['corePort']}}
+        config = configuration(front, 'tun', value['route'], port=opts['port'], http_port=opts['port'] + 1,
+                               dns=opts['dns'], direct=opts['direct'], exclude=exclude, interface=interface)
+        session['chain'] = True
+    else:
+        config = configuration(profile, value['mode'], value['route'], port=opts['port'], http_port=opts['port'] + 1,
+                               dns=opts['dns'], direct=opts['direct'], interface=interface)
     atomic_json(ROOT / 'pending.json', config)
-    completed = subprocess.run(command(profile['engine'], ROOT / 'pending.json', True), capture_output=True, timeout=20)
-    if completed.returncode:
-        raise VpnError('The profile configuration is invalid or unsupported')
+    checks = [(tunnel_engine, ROOT / 'pending.json')]
+    if core is not None:
+        atomic_json(ROOT / 'pending-core.json', core)
+        checks.append(('xray', ROOT / 'pending-core.json'))
+    for engine, path in checks:
+        completed = subprocess.run(command(engine, path, True), capture_output=True, timeout=20)
+        if completed.returncode:
+            raise VpnError('The profile configuration is invalid or unsupported')
     old_config, old_session = read_json(ROOT / 'config.json'), read_json(ROOT / 'session.json')
+    old_core = read_json(ROOT / 'core.json')
     was_connected = status()['connected']
     os.replace(ROOT / 'pending.json', ROOT / 'config.json')
-    atomic_json(ROOT / 'session.json', {k: profile[k] for k in ('id', 'name', 'type', 'engine')} | {'mode': value['mode']})
+    if core is not None:
+        os.replace(ROOT / 'pending-core.json', ROOT / 'core.json')
+    atomic_json(ROOT / 'session.json', session)
     try:
         service('restart')
         deadline = time.monotonic() + 15
         while time.monotonic() < deadline:
-            if ready():
+            if ready(opts['port']):
                 return
             time.sleep(.1)
         raise VpnError('The VPN tunnel did not start')
@@ -470,6 +547,8 @@ def connect(value=None):
         if old_config is not None and old_session is not None:
             atomic_json(ROOT / 'config.json', old_config)
             atomic_json(ROOT / 'session.json', old_session)
+            if old_core is not None:
+                atomic_json(ROOT / 'core.json', old_core)
             if was_connected:
                 service('start')
         raise
@@ -524,6 +603,19 @@ def other_tunnels():
             pass
         found.append(name)
     return sorted(found)
+
+
+def physical_interface():
+    """Wi-Fi or cable interface of the default route, skipping VPN tunnels."""
+    try:
+        for line in Path('/proc/net/route').read_text().splitlines()[1:]:
+            fields = line.split()
+            if len(fields) > 7 and fields[1] == '00000000' and fields[7] == '00000000' \
+                    and not Path(f'/sys/class/net/{fields[0]}/tun_flags').exists():
+                return fields[0]
+    except OSError:
+        pass
+    return ''
 
 
 def real_latency(profile):
@@ -626,6 +718,34 @@ def add_profiles(value, group, entries):
         value['selectedProfile'] = output[0]['id'] if output else -1
 
 
+def supervise(session):
+    """Run Xray (to the server) and sing-box (the tunnel) together; if one stops, stop both."""
+    processes = [subprocess.Popen(command('xray', ROOT / 'core.json'))]
+    try:
+        deadline = time.monotonic() + 10
+        while True:
+            try:
+                socket.create_connection(('127.0.0.1', session['corePort']), timeout=.2).close()
+                break
+            except OSError:
+                if processes[0].poll() is not None or time.monotonic() > deadline:
+                    sys.exit(1)
+                time.sleep(.05)
+        processes.append(subprocess.Popen(command('sing-box', ROOT / 'config.json')))
+        while all(p.poll() is None for p in processes):
+            time.sleep(.5)
+        sys.exit(1)
+    finally:
+        for process in processes:
+            if process.poll() is None:
+                process.terminate()
+        for process in processes:
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+
+
 def dispatch(action, payload):
     ROOT.mkdir(parents=True, exist_ok=True, mode=0o700)
     os.chmod(ROOT, 0o700)
@@ -639,6 +759,8 @@ def dispatch(action, payload):
             raise VpnError('Add or select a VPN profile first')
         atomic_json(ROOT / 'process.json', {**session, 'pid': os.getpid(), 'start': proc_start(os.getpid())})
         os.umask(0o077)
+        if session.get('chain'):
+            return supervise(session)
         os.execv(binary(session['engine']), command(session['engine'], ROOT / 'config.json'))
     descriptor = os.open(ROOT / 'mutation.lock', os.O_CREAT | os.O_RDWR, 0o600)
     with os.fdopen(descriptor, 'a+') as lock:
