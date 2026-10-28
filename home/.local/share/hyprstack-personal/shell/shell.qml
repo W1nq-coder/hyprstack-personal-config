@@ -48,6 +48,7 @@ ShellRoot {
     RecordingIndicator {} // screen recording indicator (personal overlay)
     PopoutSidebarGuard {} // tray menus and notification centre never overlap (personal overlay)
     DashboardIpc {} // open the dashboard on a given tab (personal overlay)
+    SettingsIpc {} // open the settings on a given page (personal overlay)
     BatteryMonitor {}
     IdleMonitors {
         lock: lock

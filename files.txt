@@ -49,6 +49,7 @@
 .local/share/hyprstack-personal/shell/modules/RecordingIndicator.qml
 .local/share/hyprstack-personal/shell/modules/PopoutSidebarGuard.qml
 .local/share/hyprstack-personal/shell/modules/DashboardIpc.qml
+.local/share/hyprstack-personal/shell/modules/SettingsIpc.qml
 .local/share/hyprstack-personal/shell/modules/dashboard/media/CoverVisualiser.qml
 .local/share/hyprstack-personal/shell/modules/dashboard/media/Details.qml
 .local/share/hyprstack-personal/shell/modules/dashboard/media/LyricList.qml
