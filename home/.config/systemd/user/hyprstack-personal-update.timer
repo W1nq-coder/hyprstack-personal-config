@@ -2,7 +2,7 @@
 Description=Hyprstack add-ons: check for updates
 
 [Timer]
-OnStartupSec=1min
+OnStartupSec=30s
 OnUnitActiveSec=2min
 AccuracySec=10s
 

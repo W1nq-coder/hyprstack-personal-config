@@ -294,6 +294,7 @@ fallback=$HOME/.config/systemd/user/$shell_unit.d/90-fallback.conf
 [[ -f $fallback ]] && rm -f "$fallback" && echo "  снят аварийный запуск стандартной оболочки"
 systemctl --user daemon-reload
 systemctl --user enable --now hyprstack-nightlight-schedule.timer >/dev/null 2>&1 && echo "  таймер ночного режима включён"
+systemctl --user enable hyprstack-personal-update.service >/dev/null 2>&1   # проверка сразу при входе
 systemctl --user enable --now hyprstack-personal-update.timer >/dev/null 2>&1 && echo "  проверка обновлений включена (раз в 2 минуты)"
 if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
     hyprctl reload >/dev/null && echo "  Hyprland перезагружен"

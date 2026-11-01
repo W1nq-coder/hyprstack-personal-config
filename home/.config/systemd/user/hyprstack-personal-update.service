@@ -5,3 +5,7 @@ ConditionEnvironment=HYPRLAND_INSTANCE_SIGNATURE
 [Service]
 Type=oneshot
 ExecStart=%h/.local/bin/hyprstack-personal-update
+
+[Install]
+# Запускается сразу при входе в графическую сессию, не дожидаясь таймера.
+WantedBy=graphical-session.target

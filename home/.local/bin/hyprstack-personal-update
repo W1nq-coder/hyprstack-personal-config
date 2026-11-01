@@ -13,6 +13,16 @@ REPO=$(cat "$STATE/repo" 2>/dev/null) || exit 0
 exec 9>"$STATE/lock"
 flock -n 9 || exit 0
 
+# При входе в систему оболочка (она же демон уведомлений) может ещё запускаться: ждём её до 30 с.
+wait_for_notifier() {
+    local i
+    for i in $(seq 30); do
+        busctl --user status org.freedesktop.Notifications >/dev/null 2>&1 && return 0
+        sleep 1
+    done
+    return 1
+}
+
 note() { notify-send -a "HyperStack" -i software-update-available "$@"; }
 
 export GIT_TERMINAL_PROMPT=0
@@ -44,6 +54,7 @@ count=$(git -C "$REPO" rev-list --count "$local_..$remote")
 subjects=$(git -C "$REPO" log --format='• %s' -n 5 "$local_..$remote")
 echo "$remote $(date +%s)" > "$STATE/asked"
 
+wait_for_notifier || exit 0
 answer=$(timeout 900 notify-send -a "HyperStack" -i software-update-available -u normal -t 0 \
     -A update=Обновить -A cancel=Отмена \
     "Доработки HyperStack обновились" "Новых изменений: $count
