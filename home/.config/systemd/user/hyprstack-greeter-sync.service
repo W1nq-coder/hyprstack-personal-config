@@ -1,0 +1,13 @@
+[Unit]
+Description=Hyprstack add-ons: copy the current theme to the login screen (noctalia-greeter)
+ConditionPathExists=/usr/bin/noctalia-greeter-apply-appearance
+
+[Service]
+Type=oneshot
+# Небольшая пауза: тема записывается несколькими файлами подряд.
+ExecStartPre=/usr/bin/sleep 3
+ExecStart=%h/.local/bin/hyprstack-greeter-sync
+
+[Install]
+# При входе в сессию: если тема поменялась, пока этот запуск не работал.
+WantedBy=graphical-session.target

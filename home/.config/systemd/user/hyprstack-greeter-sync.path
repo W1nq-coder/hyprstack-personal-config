@@ -1,0 +1,10 @@
+[Unit]
+Description=Hyprstack add-ons: watch the theme and update the login screen
+
+[Path]
+# Срабатывает при каждой смене темы HyperStack.
+PathChanged=%h/.local/state/hyprstack/scheme.json
+Unit=hyprstack-greeter-sync.service
+
+[Install]
+WantedBy=default.target

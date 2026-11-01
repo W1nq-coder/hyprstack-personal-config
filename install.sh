@@ -190,7 +190,7 @@ if grep -q 'hl.dsp.group.lock_active()' "$keybinds_lua" 2>/dev/null; then
     fi
 fi
 [[ -d $BACKUP ]] && echo "  прежние версии сохранены в $BACKUP"
-for script in dictation nightlight hyprstack-personal-update caelestia-session-start; do
+for script in dictation nightlight hyprstack-personal-update hyprstack-greeter-sync caelestia-session-start; do
     [[ -f $HOME/.local/bin/$script ]] && do_ chmod +x "$HOME/.local/bin/$script"
 done
 
@@ -302,6 +302,20 @@ fallback=$HOME/.config/systemd/user/$shell_unit.d/90-fallback.conf
 [[ -f $fallback ]] && rm -f "$fallback" && echo "  снят аварийный запуск стандартной оболочки"
 systemctl --user daemon-reload
 systemctl --user enable --now hyprstack-nightlight-schedule.timer >/dev/null 2>&1 && echo "  таймер ночного режима включён"
+# Тема экрана входа (noctalia-greeter) следует за темой HyperStack.
+if [[ -x /usr/bin/noctalia-greeter-apply-appearance ]]; then
+    systemctl --user enable hyprstack-greeter-sync.service hyprstack-greeter-sync.path >/dev/null 2>&1
+    systemctl --user start hyprstack-greeter-sync.path >/dev/null 2>&1
+    echo "  тема экрана входа будет следовать за темой HyperStack"
+    if [[ ! -f ${XDG_STATE_HOME:-$HOME/.local/state}/hyprstack-personal/greeter-passwordless ]]; then
+        if [[ -t 0 ]]; then
+            read -r -p "  Разрешить синхронизацию темы экрана входа без пароля (нужен sudo)? [y/N] " answer
+            [[ $answer == [yYдД]* ]] && "$HOME/.local/bin/hyprstack-greeter-sync" --enable
+        else
+            echo "  Чтобы это заработало, один раз выполните в терминале: hyprstack-greeter-sync --enable"
+        fi
+    fi
+fi
 systemctl --user enable hyprstack-personal-update.service >/dev/null 2>&1   # проверка сразу при входе
 systemctl --user enable --now hyprstack-personal-update.timer >/dev/null 2>&1 && echo "  проверка обновлений включена (раз в 2 минуты)"
 if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then

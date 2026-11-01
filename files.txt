@@ -43,12 +43,15 @@
 .config/systemd/user/hyprstack-nightlight-schedule.timer
 .config/systemd/user/hyprstack-personal-update.service
 .config/systemd/user/hyprstack-personal-update.timer
+.config/systemd/user/hyprstack-greeter-sync.service
+.config/systemd/user/hyprstack-greeter-sync.path
 
 # Скрипты и звуки
 .local/bin/dictation
 ~ .local/bin/caelestia-session-start
 .local/bin/nightlight
 .local/bin/hyprstack-personal-update
+.local/bin/hyprstack-greeter-sync
 .local/bin/screenshot
 .local/share/hyprstack-dictation/sounds/start.wav
 .local/share/hyprstack-dictation/sounds/done.wav

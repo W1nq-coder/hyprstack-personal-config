@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# Тема экрана входа (noctalia-greeter) = текущая тема HyperStack.
+#
+#   hyprstack-greeter-sync            автоматически: если тема изменилась и разрешение включено
+#   hyprstack-greeter-sync --now      синхронизировать сейчас (при необходимости спросит пароль)
+#   hyprstack-greeter-sync --enable   один раз разрешить синхронизацию без пароля (нужен sudo)
+#   hyprstack-greeter-sync --print    только показать, что будет записано
+#
+# Берёт цвета из ~/.local/state/hyprstack/scheme.json, кладёт их в палитру «Synced» экрана входа
+# через его штатную программу (pkexec noctalia-greeter-apply-appearance --sync). Ничего другого
+# на экране входа не меняется, выбранная там сессия и пользователь сохраняются.
+set -uo pipefail
+
+HELPER=/usr/bin/noctalia-greeter-apply-appearance
+SCHEME=${XDG_STATE_HOME:-$HOME/.local/state}/hyprstack/scheme.json
+STATE=${XDG_STATE_HOME:-$HOME/.local/state}/hyprstack-personal
+STAGE=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/noctalia-greeter-sync
+mode=auto
+case ${1:-} in
+    "") ;;
+    --now) mode=now ;;
+    --enable) mode=enable ;;
+    --print) mode=print ;;
+    -h | --help) sed -n '2,10p' "$0"; exit 0 ;;
+    *) echo "Неизвестный параметр: $1" >&2; exit 2 ;;
+esac
+
+mkdir -p "$STATE"
+note() { command -v notify-send >/dev/null && notify-send -a "HyperStack" -i preferences-desktop-theme "$@"; }
+
+[[ -x $HELPER ]] || { [[ $mode == auto ]] && exit 0; echo "noctalia-greeter не установлен: синхронизировать нечего." >&2; exit 1; }
+
+if [[ $mode == enable ]]; then
+    echo "Разрешить синхронизацию темы экрана входа без пароля для пользователя $USER."
+    echo "Это узкое правило polkit только для действия «sync-appearance», не общий доступ к root."
+    sudo noctalia-greeter passwordless-sync enable "$USER" || exit 1
+    : > "$STATE/greeter-passwordless"
+    echo "Готово. Теперь тема экрана входа будет следовать за темой HyperStack сама."
+    exec "$0" --now
+fi
+
+[[ -f $SCHEME ]] || { [[ $mode == auto ]] && exit 0; echo "Нет $SCHEME" >&2; exit 1; }
+
+# Палитра экрана входа ← цвета темы HyperStack (Material): [ключ экрана входа, ключ темы].
+toml=$(jq -r '
+    def pal: [["primary","primary"],["on_primary","onPrimary"],["secondary","secondary"],
+              ["on_secondary","onSecondary"],["tertiary","tertiary"],["on_tertiary","onTertiary"],
+              ["error","error"],["on_error","onError"],["surface","surface"],["on_surface","onSurface"],
+              ["surface_variant","surfaceVariant"],["on_surface_variant","onSurfaceVariant"],
+              ["outline","outline"],["shadow","shadow"],["hover","tertiary"],["on_hover","onTertiary"]];
+    . as $s
+    | ($s.mode // "dark") as $mode
+    | if ($mode == "dark" or $mode == "light") then . else error("неизвестный режим темы") end
+    | "[appearance]\nscheme = \"Synced\"\ntheme_mode = \"" + $mode + "\"\n\n[appearance.palette]\n"
+      + (pal | map(. as $p | $p[0] + " = \"#" + (($s.colours[$p[1]] // error("нет цвета " + $p[1]))
+          | if test("^[0-9a-fA-F]{6}$") then ascii_downcase else error("плохой цвет " + .) end) + "\"") | join("\n"))
+      + "\n"' "$SCHEME" 2>&1) || { echo "Не удалось разобрать тему: $toml" >&2; [[ $mode == auto ]] && exit 0; exit 1; }
+
+if [[ $mode == print ]]; then printf '%s' "$toml"; exit 0; fi
+
+sum=$(printf '%s' "$toml" | sha256sum | cut -d' ' -f1)
+if [[ $mode == auto ]]; then
+    [[ $(cat "$STATE/greeter-synced" 2>/dev/null) == "$sum" ]] && exit 0     # тема не менялась
+    if [[ ! -f $STATE/greeter-passwordless ]]; then
+        # Без разрешения автоматически не синхронизируем (иначе при каждой смене темы спрашивался бы пароль).
+        # Напоминаем один раз для каждой версии темы.
+        [[ $(cat "$STATE/greeter-hinted" 2>/dev/null) == "$sum" ]] && exit 0
+        echo "$sum" > "$STATE/greeter-hinted"
+        note "Тема экрана входа не обновлена" "Чтобы она следовала за темой HyperStack сама, один раз выполните в терминале: hyprstack-greeter-sync --enable"
+        exit 0
+    fi
+fi
+
+exec 9>"$STATE/greeter-lock"
+flock -n 9 || exit 0
+
+# Папка для программы синхронизации: должна принадлежать вам и быть закрыта от остальных.
+rm -rf "$STAGE"
+install -d -m 700 "$STAGE" || exit 1
+printf '%s\n' "$toml" > "$STAGE/sync.toml"
+chmod 600 "$STAGE/sync.toml"
+
+if pkexec "$HELPER" --sync "$STAGE"; then
+    echo "$sum" > "$STATE/greeter-synced"
+    rm -rf "$STAGE"
+    [[ $mode == now ]] && echo "Тема экрана входа обновлена: $(jq -r .name "$SCHEME")." || true
+else
+    rm -rf "$STAGE"
+    if [[ $mode == auto ]]; then
+        # Разрешение пропало (например, правило polkit удалили): сбрасываем флаг, подскажем снова.
+        rm -f "$STATE/greeter-passwordless"
+    fi
+    echo "Синхронизация не удалась (отказ в доступе или нет polkit-агента)." >&2
+    exit 1
+fi
