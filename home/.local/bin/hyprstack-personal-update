@@ -40,7 +40,14 @@ timeout 120 git -C "$REPO" fetch --quiet 2>/dev/null || exit 0
 remote=$(git -C "$REPO" rev-parse '@{u}' 2>/dev/null) || exit 0
 [[ $local_ == "$remote" ]] && exit 0
 # Только если у нас нет ничего лишнего: наш HEAD должен быть предком удалённого.
-git -C "$REPO" merge-base --is-ancestor "$local_" "$remote" || exit 0
+if ! git -C "$REPO" merge-base --is-ancestor "$local_" "$remote"; then
+    # В копии есть коммиты, которых нет в GitHub: обновить «догоном» нельзя. Говорим один раз.
+    if [[ $(cat "$STATE/diverged" 2>/dev/null) != "$remote" ]]; then
+        echo "$remote" > "$STATE/diverged"
+        wait_for_notifier && note "Автообновление HyperStack невозможно" "В $REPO есть коммиты, которых нет на GitHub. Выполните там: git pull --rebase && ./install.sh"
+    fi
+    exit 0
+fi
 
 # Уже отказались от именно этой версии — не напоминаем.
 [[ $(cat "$STATE/dismissed" 2>/dev/null) == "$remote" ]] && exit 0
@@ -51,10 +58,12 @@ if [[ $(cut -d' ' -f1 "$STATE/asked" 2>/dev/null) == "$remote" ]]; then
 fi
 
 count=$(git -C "$REPO" rev-list --count "$local_..$remote")
-subjects=$(git -C "$REPO" log --format='• %s' -n 5 "$local_..$remote")
-echo "$remote $(date +%s)" > "$STATE/asked"
+subjects=$(git -C "$REPO" log --format='• %s' -n 5 "$local_..$remote" | tr -d '<>[]`*_#\\' | cut -c1-120)
 
+# Метку «уже спрашивали» ставим только когда уведомление реально можно показать: иначе при медленной
+# загрузке оболочки мы бы промолчали на ближайшие 3 часа.
 wait_for_notifier || exit 0
+echo "$remote $(date +%s)" > "$STATE/asked"
 answer=$(timeout 900 notify-send -a "HyperStack" -i software-update-available -u normal -t 0 \
     -A update=Обновить -A cancel=Отмена \
     "Доработки HyperStack обновились" "Новых изменений: $count
@@ -70,7 +79,7 @@ case $answer in
             note -u critical "Обновление не выполнено" "git pull не удался."
             exit 1
         fi
-        args=()
+        args=(--no-wallpapers)   # обои (~2 ГБ) при обновлении не качаем
         [[ -f $STATE/personal ]] && args+=(--personal)
         note "Применяю обновление" "Оболочка перезапустится на несколько секунд."
         if "$REPO/install.sh" "${args[@]}" </dev/null >"$STATE/last-install.log" 2>&1; then

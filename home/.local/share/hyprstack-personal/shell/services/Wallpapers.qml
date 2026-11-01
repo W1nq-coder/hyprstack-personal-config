@@ -53,8 +53,12 @@ Searcher {
 
     function addSource(path: string): void {
         path = path.replace(/\/+$/, "");
+        // Too broad: "/" or the home folder itself (or anything that contains it) would make the shell
+        // scan the whole disk recursively.
+        if (!path || path === Paths.home || Paths.home.startsWith(path + "/"))
+            return;
         // Already shown: the main folder or one that is already added.
-        if (!path || isInsideMain(path) || sources.includes(path) || sources.some(s => path.startsWith(s + "/")))
+        if (isInsideMain(path) || sources.includes(path) || sources.some(s => path.startsWith(s + "/")))
             return;
         // A parent of existing sources replaces them.
         sources = [...sources.filter(s => !s.startsWith(path + "/")), path];
@@ -213,7 +217,7 @@ Searcher {
         onLoaded: {
             try {
                 const data = JSON.parse(text()) ?? {};
-                const folders = (data.folders ?? []).filter(f => typeof f === "string" && f.startsWith("/"));
+                const folders = (data.folders ?? []).filter(f => typeof f === "string" && f.startsWith("/") && f.length > 1 && f !== Paths.home && !Paths.home.startsWith(f + "/"));
                 if (JSON.stringify(folders) !== JSON.stringify(root.sources))
                     root.sources = folders;
             } catch (err) {
