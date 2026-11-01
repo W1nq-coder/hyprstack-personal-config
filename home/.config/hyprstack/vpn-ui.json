@@ -1,0 +1,9 @@
+{
+    "design": "orb",
+    "sort": "source",
+    "showAddress": true,
+    "showProtocol": true,
+    "connectFastest": false,
+    "pingOnOpen": true,
+    "updateOnOpen": false
+}
