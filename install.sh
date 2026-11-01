@@ -290,6 +290,14 @@ say "Применение"
 # Юнит оболочки: в одних установках hyprstack.service, в других hyprstack-session.service.
 shell_unit=hyprstack.service
 systemctl --user cat hyprstack-session.service >/dev/null 2>&1 && shell_unit=hyprstack-session.service
+# Если оболочка уже запущена, перезапускаем именно тот юнит, под которым она работает: на части
+# установок есть оба юнита, и hyprstack-session.service может не работать (тогда перезапуск
+# «успешен», а оболочка остаётся старой).
+qs_pid=$(pgrep -x qs | head -1)
+if [[ -n $qs_pid ]]; then
+    running_unit=$(sed -n 's#.*/\(hyprstack[^/]*\.service\)$#\1#p' "/proc/$qs_pid/cgroup" 2>/dev/null | head -1)
+    [[ -n $running_unit ]] && shell_unit=$running_unit
+fi
 fallback=$HOME/.config/systemd/user/$shell_unit.d/90-fallback.conf
 [[ -f $fallback ]] && rm -f "$fallback" && echo "  снят аварийный запуск стандартной оболочки"
 systemctl --user daemon-reload
@@ -303,9 +311,13 @@ if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
     "$HOME/.local/bin/nightlight" apply
 
     since=$(date '+%Y-%m-%d %H:%M:%S')
+    old_pids=$(pgrep -x qs | sort)
     systemctl --user restart "$shell_unit"
     sleep 8
-    if pgrep -f "qs --path $PERSONAL" >/dev/null &&
+    new_pids=$(pgrep -x qs | sort)
+    # Оболочка должна быть именно новым процессом, а не прежним, пережившим перезапуск.
+    if [[ -n $new_pids && -z $(comm -12 <(printf '%s\n' "$old_pids") <(printf '%s\n' "$new_pids")) ]] &&
+        pgrep -f "qs --path $PERSONAL" >/dev/null &&
         ! journalctl --user -u "$shell_unit" --since "$since" --no-pager -o cat | grep -q -E 'ERROR|Failed to load'; then
         echo "  оболочка перезапущена"
     else
