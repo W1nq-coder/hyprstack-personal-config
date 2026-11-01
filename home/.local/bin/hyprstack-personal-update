@@ -15,9 +15,19 @@ flock -n 9 || exit 0
 
 note() { notify-send -a "HyperStack" -i software-update-available "$@"; }
 
-git -C "$REPO" fetch --quiet 2>/dev/null || exit 0     # нет сети — тихо выходим
-remote=$(git -C "$REPO" rev-parse '@{u}' 2>/dev/null) || exit 0
+export GIT_TERMINAL_PROMPT=0
+
+# Быстрая проверка (запускается каждые пару минут): узнаём только номер последнего коммита
+# в GitHub. Ничего не качаем, пока он не отличается от нашего или от того, от чего отказались.
+upstream=$(git -C "$REPO" rev-parse --abbrev-ref '@{u}' 2>/dev/null) || exit 0
+latest=$(timeout 20 git -C "$REPO" ls-remote "${upstream%%/*}" "refs/heads/${upstream#*/}" 2>/dev/null | cut -f1)
+[[ -n $latest ]] || exit 0                              # нет сети — тихо выходим
 local_=$(git -C "$REPO" rev-parse HEAD)
+[[ $latest == "$local_" ]] && exit 0
+[[ $(cat "$STATE/dismissed" 2>/dev/null) == "$latest" ]] && exit 0
+
+timeout 120 git -C "$REPO" fetch --quiet 2>/dev/null || exit 0
+remote=$(git -C "$REPO" rev-parse '@{u}' 2>/dev/null) || exit 0
 [[ $local_ == "$remote" ]] && exit 0
 # Только если у нас нет ничего лишнего: наш HEAD должен быть предком удалённого.
 git -C "$REPO" merge-base --is-ancestor "$local_" "$remote" || exit 0
