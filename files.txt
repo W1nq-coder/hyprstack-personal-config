@@ -37,6 +37,7 @@
 ~ .config/systemd/user/hyprstack.service.d/10-autostart.conf
 ~ .config/systemd/user/hyprstack.service.d/20-personal-shell.conf
 .config/systemd/user/hyprstack-session.service.d/10-personal-shell.conf
+.config/systemd/user/hyprstack-session.service.d/30-path.conf
 .config/systemd/user/hyprstack-vpn.service.d/10-personal-shell.conf
 .config/systemd/user/hyprstack-nightlight-schedule.service
 .config/systemd/user/hyprstack-nightlight-schedule.timer
