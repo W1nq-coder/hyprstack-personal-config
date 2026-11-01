@@ -258,16 +258,21 @@ fi
 
 # ---------- 5. Обои ----------
 
-# Коллекция обоев vyrx-dev/Wallpapers (~2 ГБ) лежит в ~/Pictures/vyrx-wallpapers.
-# Клонируется без истории; если папка уже есть, не трогается.
+# Коллекция обоев vyrx-dev/Wallpapers (~2 ГБ). Оболочка читает обои из «Изображения/Wallpapers»
+# (HYPRSTACK_WALLPAPERS_DIR по умолчанию), поэтому клонируем именно туда. Клон без истории;
+# если папка уже есть, не трогается. Прежняя папка vyrx-wallpapers подключается ссылкой.
 say "Обои"
-wp=$HOME/Pictures/vyrx-wallpapers
+pics=$(xdg-user-dir PICTURES 2>/dev/null || true)
+[[ -n $pics && $pics != "$HOME" ]] || pics=$HOME/Pictures
+wp=${HYPRSTACK_WALLPAPERS_DIR:-$pics/Wallpapers}
+old=$pics/vyrx-wallpapers
 if ((!WALLPAPERS)); then
     echo "  пропущено (--no-wallpapers)"
-elif [[ -d $wp/.git ]]; then
-    echo "  уже скачаны: $wp"
-elif [[ -e $wp ]] && [[ -n $(ls -A "$wp" 2>/dev/null) ]]; then
-    warn "$wp существует и не пуст, не трогаю"
+elif [[ -d $wp/.git ]] || { [[ -d $wp ]] && [[ -n $(ls -A "$wp" 2>/dev/null) ]]; }; then
+    echo "  уже на месте: $wp"
+elif [[ -d $old/.git && ! -e $wp ]]; then
+    echo "  подключаю прежнюю папку: $wp -> $old"
+    do_ ln -s "$old" "$wp"
 elif ! command -v git >/dev/null; then
     warn "Нет git, обои не скачаны"
 else
