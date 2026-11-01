@@ -126,3 +126,5 @@
 .local/share/hyprstack-personal/shell/modules/nexus/pages/wallandstyle/WallpaperSelect.qml
 .local/share/hyprstack-personal/shell/components/filedialog/FileDialog.qml
 .local/share/hyprstack-personal/shell/components/filedialog/DialogButtons.qml
+# Уведомления с кнопками (например, «Обновить» / «Отмена») сразу раскрыты
+.local/share/hyprstack-personal/shell/modules/notifications/Notification.qml
