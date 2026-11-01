@@ -145,7 +145,15 @@ def wallpaper_command(args):
     path = Path(args.file).expanduser().resolve() if args.file else None
     if args.random is not None:
         directory = Path(args.random).expanduser() if args.random else Path(os.environ.get("HYPRSTACK_WALLPAPERS_DIR", xdg_directory("PICTURES") / "Wallpapers"))
-        candidates = [p for p in directory.rglob("*") if p.is_file() and p.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp", ".gif")]
+        directories = [directory]
+        if not args.random:
+            # Folders added with "Browse" in Settings -> Wallpapers (wallpaper-sources.json).
+            try:
+                config = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "hyprstack" / "wallpaper-sources.json"
+                directories += [Path(d) for d in json.loads(config.read_text()).get("folders", []) if isinstance(d, str)]
+            except (OSError, ValueError, AttributeError):
+                pass
+        candidates = [p for d in directories if d.is_dir() for p in d.rglob("*") if p.is_file() and p.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp", ".gif")]
         if not candidates:
             raise ValueError(_("No wallpapers found in %1").replace("%1", str(directory)))
         others = [p for p in candidates if p.resolve() != wallpaper_path()]

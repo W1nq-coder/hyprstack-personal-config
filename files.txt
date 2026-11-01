@@ -121,3 +121,8 @@
 .local/share/hyprstack-personal/shell/scripts/keybinds-apps.py
 .local/share/hyprstack-personal/shell/scripts/input-apply.py
 .local/share/hyprstack-personal/shell/scripts/input-devices.py
+# Обои: добавленные папки и файлы сохраняются в списке (Настройки -> Обои -> Обзор)
+.local/share/hyprstack-personal/shell/services/Wallpapers.qml
+.local/share/hyprstack-personal/shell/modules/nexus/pages/wallandstyle/WallpaperSelect.qml
+.local/share/hyprstack-personal/shell/components/filedialog/FileDialog.qml
+.local/share/hyprstack-personal/shell/components/filedialog/DialogButtons.qml

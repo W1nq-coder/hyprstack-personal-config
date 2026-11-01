@@ -287,7 +287,10 @@ fi
 ((APPLY)) || { say "Готово (без применения)"; exit 0; }
 
 say "Применение"
-fallback=$HOME/.config/systemd/user/hyprstack.service.d/90-fallback.conf
+# Юнит оболочки: в одних установках hyprstack.service, в других hyprstack-session.service.
+shell_unit=hyprstack.service
+systemctl --user cat hyprstack-session.service >/dev/null 2>&1 && shell_unit=hyprstack-session.service
+fallback=$HOME/.config/systemd/user/$shell_unit.d/90-fallback.conf
 [[ -f $fallback ]] && rm -f "$fallback" && echo "  снят аварийный запуск стандартной оболочки"
 systemctl --user daemon-reload
 systemctl --user enable --now hyprstack-nightlight-schedule.timer >/dev/null 2>&1 && echo "  таймер ночного режима включён"
@@ -299,27 +302,27 @@ if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
     "$HOME/.local/bin/nightlight" apply
 
     since=$(date '+%Y-%m-%d %H:%M:%S')
-    systemctl --user restart hyprstack.service
+    systemctl --user restart "$shell_unit"
     sleep 8
     if pgrep -f "qs --path $PERSONAL" >/dev/null &&
-        ! journalctl --user -u hyprstack.service --since "$since" --no-pager -o cat | grep -q -E 'ERROR|Failed to load'; then
+        ! journalctl --user -u "$shell_unit" --since "$since" --no-pager -o cat | grep -q -E 'ERROR|Failed to load'; then
         echo "  оболочка перезапущена"
     else
         warn "Оболочка с доработками не запустилась:"
-        journalctl --user -u hyprstack.service --since "$since" --no-pager -o cat | grep -E 'ERROR|caused' | head -6
+        journalctl --user -u "$shell_unit" --since "$since" --no-pager -o cat | grep -E 'ERROR|caused' | head -6
         if [[ -d $BACKUP/$PERSONAL_REL ]]; then
             echo "  Возвращаю прежние файлы оболочки из $BACKUP"
             cp -a "$BACKUP/$PERSONAL_REL." "$PERSONAL/"
         fi
         echo "  Запускаю стандартную оболочку (без доработок)."
         systemctl --user set-environment HYPRSTACK_SHELL_DIR="$INSTALLED"
-        mkdir -p "$HOME/.config/systemd/user/hyprstack.service.d"
+        mkdir -p "$HOME/.config/systemd/user/$shell_unit.d"
         printf '[Service]\nEnvironment=HYPRSTACK_SHELL_DIR=%s\n' "$INSTALLED" \
-            > "$HOME/.config/systemd/user/hyprstack.service.d/90-fallback.conf"
+            > "$HOME/.config/systemd/user/$shell_unit.d/90-fallback.conf"
         systemctl --user daemon-reload
-        systemctl --user restart hyprstack.service
+        systemctl --user restart "$shell_unit"
         echo "  Когда доработки будут исправлены, удалите"
-        echo "  ~/.config/systemd/user/hyprstack.service.d/90-fallback.conf и запустите install.sh снова."
+        echo "  $fallback и запустите install.sh снова."
         exit 1
     fi
 else
