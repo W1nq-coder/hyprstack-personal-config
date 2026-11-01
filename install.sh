@@ -6,6 +6,7 @@
 #                            автозапуск) поверх существующих — для восстановления моей системы
 #   ./install.sh --check     только показать, что изменится (ничего не трогает)
 #   ./install.sh --no-apply  разложить файлы, но не перезагружать Hyprland и оболочку
+#   ./install.sh --no-wallpapers  не скачивать коллекцию обоев (~2 ГБ)
 #
 # Без --personal личные настройки автора (строки «~ » в files.txt) не ставятся,
 # а ваши переменные из hypr-vars.lua переносятся в vars.lua.
@@ -22,12 +23,14 @@ BACKUP=${XDG_STATE_HOME:-$HOME/.local/state}/hyprstack-personal-backup/$(date +%
 CHECK=0
 APPLY=1
 MINE=0
+WALLPAPERS=1
 for arg in "$@"; do
     case $arg in
         --check) CHECK=1; APPLY=0 ;;
         --no-apply) APPLY=0 ;;
         --personal) MINE=1 ;;
-        -h | --help) sed -n '2,15p' "$0"; exit 0 ;;
+        --no-wallpapers) WALLPAPERS=0 ;;
+        -h | --help) sed -n '2,16p' "$0"; exit 0 ;;
         *) echo "Неизвестный параметр: $arg" >&2; exit 2 ;;
     esac
 done
@@ -245,7 +248,28 @@ if [[ ! -f /etc/systemd/logind.conf.d/50-power-key.conf ]]; then
     echo "  (действует после перезагрузки)"
 fi
 
-# ---------- 5. Применить ----------
+# ---------- 5. Обои ----------
+
+# Коллекция обоев vyrx-dev/Wallpapers (~2 ГБ) лежит в ~/Pictures/vyrx-wallpapers.
+# Клонируется без истории; если папка уже есть, не трогается.
+say "Обои"
+wp=$HOME/Pictures/vyrx-wallpapers
+if ((!WALLPAPERS)); then
+    echo "  пропущено (--no-wallpapers)"
+elif [[ -d $wp/.git ]]; then
+    echo "  уже скачаны: $wp"
+elif [[ -e $wp ]] && [[ -n $(ls -A "$wp" 2>/dev/null) ]]; then
+    warn "$wp существует и не пуст, не трогаю"
+elif ! command -v git >/dev/null; then
+    warn "Нет git, обои не скачаны"
+else
+    echo "  скачиваю https://github.com/vyrx-dev/Wallpapers (~2 ГБ) в $wp"
+    do_ mkdir -p "$(dirname "$wp")"
+    do_ git clone --depth 1 https://github.com/vyrx-dev/Wallpapers.git "$wp" \
+        || warn "Не удалось скачать обои; повторите: git clone --depth 1 https://github.com/vyrx-dev/Wallpapers.git $wp"
+fi
+
+# ---------- 6. Применить ----------
 
 ((APPLY)) || { say "Готово (без применения)"; exit 0; }
 
