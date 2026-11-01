@@ -177,6 +177,15 @@ if ! grep -q 'extras.lua' "$local_lua" 2>/dev/null; then
         printf '\n-- Voice input, night light and the power key menu (hyprstack-personal-config).\ndofile((os.getenv("XDG_CONFIG_HOME") or os.getenv("HOME") .. "/.config") .. "/hyprstack/extras.lua")\n' >> "$local_lua"
     fi
 fi
+# В Hyprland 0.56 нет hl.dsp.group.lock_active(): сочетание «заблокировать группу» ломает загрузку конфига.
+keybinds_lua=$HOME/.config/hypr/hyprland/keybinds.lua
+if grep -q 'hl.dsp.group.lock_active()' "$keybinds_lua" 2>/dev/null; then
+    echo "  ~/.config/hypr/hyprland/keybinds.lua: group.lock_active() -> group.lock()"
+    if ((!CHECK)); then
+        mkdir -p "$BACKUP/.config/hypr/hyprland"; cp -p "$keybinds_lua" "$BACKUP/.config/hypr/hyprland/keybinds.lua"
+        sed -i 's/hl\.dsp\.group\.lock_active()/hl.dsp.group.lock()/' "$keybinds_lua"
+    fi
+fi
 [[ -d $BACKUP ]] && echo "  прежние версии сохранены в $BACKUP"
 for script in dictation nightlight caelestia-session-start; do
     [[ -f $HOME/.local/bin/$script ]] && do_ chmod +x "$HOME/.local/bin/$script"

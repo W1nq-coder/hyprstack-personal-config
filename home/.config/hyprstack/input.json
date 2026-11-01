@@ -5,7 +5,9 @@
     },
     "mouse": {
         "all": {
-            "scroll_factor": 1.05,
+            "left_handed": false,
+            "middle_button_emulation": false,
+            "scroll_factor": 1.65,
             "sensitivity": 0.0
         }
     },
