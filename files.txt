@@ -128,3 +128,4 @@
 .local/share/hyprstack-personal/shell/components/filedialog/DialogButtons.qml
 # Уведомления с кнопками (например, «Обновить» / «Отмена») сразу раскрыты
 .local/share/hyprstack-personal/shell/modules/notifications/Notification.qml
+.local/share/hyprstack-personal/shell/modules/sidebar/Notif.qml
