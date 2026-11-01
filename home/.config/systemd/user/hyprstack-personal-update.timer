@@ -1,0 +1,10 @@
+[Unit]
+Description=Hyprstack add-ons: check for updates
+
+[Timer]
+OnStartupSec=2min
+OnUnitActiveSec=15min
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

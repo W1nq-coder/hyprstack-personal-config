@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Проверяет, не появились ли в GitHub новые коммиты доработок HyperStack.
+# Если появились — показывает уведомление с кнопками «Обновить» / «Отмена».
+# Путь к репозиторию берётся из файла, который записывает install.sh, так что
+# папка с клоном может быть где угодно.
+set -uo pipefail
+
+STATE=${XDG_STATE_HOME:-$HOME/.local/state}/hyprstack-personal
+mkdir -p "$STATE"
+REPO=$(cat "$STATE/repo" 2>/dev/null) || exit 0
+[[ -d $REPO/.git ]] || exit 0
+
+exec 9>"$STATE/lock"
+flock -n 9 || exit 0
+
+note() { notify-send -a "HyperStack" -i software-update-available "$@"; }
+
+git -C "$REPO" fetch --quiet 2>/dev/null || exit 0     # нет сети — тихо выходим
+remote=$(git -C "$REPO" rev-parse '@{u}' 2>/dev/null) || exit 0
+local_=$(git -C "$REPO" rev-parse HEAD)
+[[ $local_ == "$remote" ]] && exit 0
+# Только если у нас нет ничего лишнего: наш HEAD должен быть предком удалённого.
+git -C "$REPO" merge-base --is-ancestor "$local_" "$remote" || exit 0
+
+# Уже отказались от именно этой версии — не напоминаем.
+[[ $(cat "$STATE/dismissed" 2>/dev/null) == "$remote" ]] && exit 0
+# Не отвечали — переспрашиваем не чаще раза в 3 часа.
+if [[ $(cut -d' ' -f1 "$STATE/asked" 2>/dev/null) == "$remote" ]]; then
+    last=$(cut -d' ' -f2 "$STATE/asked")
+    (( $(date +%s) - last < 10800 )) && exit 0
+fi
+
+count=$(git -C "$REPO" rev-list --count "$local_..$remote")
+subjects=$(git -C "$REPO" log --format='• %s' -n 5 "$local_..$remote")
+echo "$remote $(date +%s)" > "$STATE/asked"
+
+answer=$(timeout 900 notify-send -a "HyperStack" -i software-update-available -u normal -t 0 \
+    -A update=Обновить -A cancel=Отмена \
+    "Доработки HyperStack обновились" "Новых изменений: $count
+$subjects")
+
+case $answer in
+    update)
+        if [[ -n $(git -C "$REPO" status --porcelain --untracked-files=no) ]]; then
+            note "Обновление не выполнено" "В $REPO есть ваши незакоммиченные правки. Сохраните их и обновите вручную: git pull && ./install.sh"
+            exit 1
+        fi
+        if ! git -C "$REPO" pull --ff-only --quiet; then
+            note -u critical "Обновление не выполнено" "git pull не удался."
+            exit 1
+        fi
+        args=()
+        [[ -f $STATE/personal ]] && args+=(--personal)
+        note "Применяю обновление" "Оболочка перезапустится на несколько секунд."
+        if "$REPO/install.sh" "${args[@]}" </dev/null >"$STATE/last-install.log" 2>&1; then
+            rm -f "$STATE/asked"
+            note "Готово" "HyperStack обновлён до $(git -C "$REPO" rev-parse --short HEAD)."
+        else
+            note -u critical "Обновление применилось с ошибкой" "Подробности: $STATE/last-install.log"
+        fi
+        ;;
+    cancel)
+        echo "$remote" > "$STATE/dismissed"
+        ;;
+esac
+exit 0

@@ -190,7 +190,7 @@ if grep -q 'hl.dsp.group.lock_active()' "$keybinds_lua" 2>/dev/null; then
     fi
 fi
 [[ -d $BACKUP ]] && echo "  прежние версии сохранены в $BACKUP"
-for script in dictation nightlight caelestia-session-start; do
+for script in dictation nightlight hyprstack-personal-update caelestia-session-start; do
     [[ -f $HOME/.local/bin/$script ]] && do_ chmod +x "$HOME/.local/bin/$script"
 done
 
@@ -215,6 +215,14 @@ if [[ -f $shell_json ]]; then
             printf '%s\n' "$patched" > "$shell_json.tmp" && chmod 600 "$shell_json.tmp" && mv "$shell_json.tmp" "$shell_json"
         fi
     fi
+fi
+
+# Запоминаем, где лежит этот клон, чтобы уведомления об обновлениях находили его сами.
+if ((!CHECK)); then
+    upd_state=${XDG_STATE_HOME:-$HOME/.local/state}/hyprstack-personal
+    mkdir -p "$upd_state"
+    printf '%s\n' "$REPO" > "$upd_state/repo"
+    if ((MINE)); then : > "$upd_state/personal"; else rm -f "$upd_state/personal"; fi
 fi
 
 # ---------- 4. Модель распознавания речи и прочее ----------
@@ -278,6 +286,7 @@ fallback=$HOME/.config/systemd/user/hyprstack.service.d/90-fallback.conf
 [[ -f $fallback ]] && rm -f "$fallback" && echo "  снят аварийный запуск стандартной оболочки"
 systemctl --user daemon-reload
 systemctl --user enable --now hyprstack-nightlight-schedule.timer >/dev/null 2>&1 && echo "  таймер ночного режима включён"
+systemctl --user enable --now hyprstack-personal-update.timer >/dev/null 2>&1 && echo "  проверка обновлений включена (раз в 15 минут)"
 if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
     hyprctl reload >/dev/null && echo "  Hyprland перезагружен"
     errors=$(hyprctl configerrors 2>/dev/null | grep -v -i -E '^(no errors|ok)?$')

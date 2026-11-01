@@ -1,0 +1,7 @@
+[Unit]
+Description=Hyprstack add-ons: offer an update when the repository has new commits
+ConditionEnvironment=HYPRLAND_INSTANCE_SIGNATURE
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/hyprstack-personal-update
