@@ -57,7 +57,7 @@ Item {
         const bw = Math.abs(bandX1 - bandX0), bh = Math.abs(bandY1 - bandY0);
         const sel = Object.assign({}, bandBase);
         for (const e of DesktopIcons.items) {
-            const p = DesktopIcons.positions[e.name];
+            const p = DesktopIcons.posOf(e.name);
             if (!p)
                 continue;
             const rx = cellX(p[0]) + 4, ry = cellY(p[1]) + 4, rw = cellW - 8, rh = cellH - 8;
@@ -70,23 +70,23 @@ Item {
     anchors.fill: parent
     focus: true
 
-    Binding {
-        target: DesktopIcons
-        property: "cols"
-        value: root.cols
-    }
+    // The grid is handed to the service only once the layer has a real size; before that cols and
+    // rows would be 1 and every icon would be squeezed into one row.
+    readonly property bool sized: width > 0 && height > 0
 
-    Binding {
-        target: DesktopIcons
-        property: "rows"
-        value: root.rows
-    }
-
-    Component.onCompleted: {
+    function syncGrid(): void {
+        if (!sized)
+            return;
+        DesktopIcons.cols = cols;
+        DesktopIcons.rows = rows;
         DesktopIcons.layoutReady = true;
         DesktopIcons.autoPlace();
     }
-    onRowsChanged: DesktopIcons.autoPlace()
+
+    Component.onCompleted: syncGrid()
+    onSizedChanged: syncGrid()
+    onColsChanged: syncGrid()
+    onRowsChanged: syncGrid()
 
     // ------------------------------------------------------------------ keyboard
     Keys.onPressed: event => {
@@ -164,7 +164,7 @@ Item {
 
     // Where the dragged icons will land.
     Rectangle {
-        readonly property var p: root.dragAnchor ? DesktopIcons.positions[root.dragAnchor.name] : undefined
+        readonly property var p: root.dragAnchor ? DesktopIcons.posOf(root.dragAnchor.name) : undefined
         readonly property int col: p ? Math.max(0, Math.min(root.cols - 1, p[0] + Math.round(root.dragDx / root.cellW))) : 0
         readonly property int row: p ? Math.max(0, Math.min(root.rows - 1, p[1] + Math.round(root.dragDy / root.cellH))) : 0
 
@@ -191,13 +191,13 @@ Item {
 
         required property var modelData
 
-        readonly property var pos: DesktopIcons.positions[modelData.name]
+        readonly property var pos: DesktopIcons.posOf(modelData.name)
         readonly property bool isSelected: DesktopIcons.selection[modelData.path] === true
         readonly property bool isRenaming: DesktopIcons.renaming === modelData.path
         readonly property bool moving: root.dragging && isSelected
         readonly property var appEntry: modelData.suffix === "desktop" ? (DesktopEntries.byId(modelData.name.replace(/\.desktop$/, "")) ?? DesktopEntries.heuristicLookup(modelData.name.replace(/\.desktop$/, ""))) : null
         readonly property string label: appEntry?.name ?? modelData.name
-        readonly property string customIcon: DesktopIcons.customIcons[modelData.name] ?? ""
+        readonly property string customIcon: DesktopIcons.iconOf(modelData.name)
 
         visible: pos !== undefined
         x: pos ? root.cellX(pos[0]) + (moving ? root.dragDx : 0) : 0
@@ -257,7 +257,7 @@ Item {
                     asynchronous: true
                     fillMode: item.customIcon !== "" ? Image.PreserveAspectFit : Image.PreserveAspectCrop
                     sourceSize: Qt.size(DesktopIcons.iconPx * 2, DesktopIcons.iconPx * 2)
-                    source: item.customIcon !== "" ? Qt.resolvedUrl(item.customIcon) : item.modelData.isImage ? Qt.resolvedUrl(item.modelData.path) : ""
+                    source: item.customIcon !== "" ? Paths.fileUrl(item.customIcon) : item.modelData.isImage ? Paths.fileUrl(item.modelData.path) : ""
                 }
 
                 IconImage {
@@ -533,7 +533,7 @@ Item {
                             {
                                 text: root.l("Reset icon", "Сбросить значок"),
                                 icon: "restart_alt",
-                                disabled: !(D.customIcons[t.name] ?? ""),
+                                disabled: D.iconOf(t.name) === "",
                                 action: () => D.setCustomIcon(t.name, "")
                             }
                         ]

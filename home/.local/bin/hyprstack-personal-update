@@ -51,9 +51,9 @@ remote=$(git -C "$REPO" rev-parse '@{u}' 2>/dev/null) || exit 0
 # Только если у нас нет ничего лишнего: наш HEAD должен быть предком удалённого.
 if ! git -C "$REPO" merge-base --is-ancestor "$local_" "$remote"; then
     # В копии есть коммиты, которых нет в GitHub: обновить «догоном» нельзя. Говорим один раз.
-    if [[ $(cat "$STATE/diverged" 2>/dev/null) != "$remote" ]]; then
-        echo "$remote" > "$STATE/diverged"
-        wait_for_notifier && note "Автообновление HyperStack невозможно" "В $REPO есть коммиты, которых нет на GitHub. Выполните там: git pull --rebase && ./install.sh"
+    if [[ $(cat "$STATE/diverged" 2>/dev/null) != "$remote" ]] && wait_for_notifier; then
+        note "Автообновление HyperStack невозможно" "В $REPO есть коммиты, которых нет на GitHub. Выполните там: git pull --rebase && ./install.sh"
+        echo "$remote" > "$STATE/diverged"       # помечаем, только когда сообщение реально показано
     fi
     exit 0
 fi

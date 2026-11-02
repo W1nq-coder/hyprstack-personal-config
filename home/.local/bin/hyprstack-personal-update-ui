@@ -82,6 +82,9 @@ main() {
         printf '  Сохраните их и повторите: git pull && ./install.sh\n\n  Нажмите любую клавишу...'
         read -r -s -n1; return 1
     fi
+    # Если окно закроют посреди обновления, установка всё равно доходит до конца: после git pull
+    # новых коммитов уже нет, и оборванную установку никто не повторил бы.
+    trap '' HUP
     printf '  %s▶ git pull%s\n' "$B" "$R"
     if ! git -C "$REPO" pull --ff-only; then
         printf '\n  %sgit pull не удался.%s Нажмите любую клавишу...' "$ERR" "$R"; read -r -s -n1; return 1
@@ -90,7 +93,7 @@ main() {
     [[ -f $STATE/personal ]] && args+=(--personal)
     printf '\n  %s▶ ./install.sh %s%s\n\n' "$B" "${args[*]}" "$R"
     mkdir -p "$STATE"
-    "$REPO/install.sh" "${args[@]}" 2>&1 | tee "$STATE/last-install.log"
+    "$REPO/install.sh" "${args[@]}" 2>&1 | tee -p "$STATE/last-install.log"
     local status=${PIPESTATUS[0]}
     if ((status == 0)); then
         rm -f "$STATE/asked"

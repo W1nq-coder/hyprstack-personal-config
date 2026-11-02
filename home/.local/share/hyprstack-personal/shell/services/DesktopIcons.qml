@@ -44,6 +44,18 @@ Singleton {
     // What can be created from the menu: [id, extension, English name, Russian name]
     readonly property var newTypes: [["dir", "", "New folder", "Новая папка"], ["txt", ".txt", "New text document", "Новый текстовый документ"], ["md", ".md", "New Markdown document", "Новый документ Markdown"], ["html", ".html", "New HTML page", "Новая страница HTML"], ["py", ".py", "New Python script", "Новый скрипт Python"], ["sh", ".sh", "New Bash script", "Новый скрипт Bash"], ["json", ".json", "New JSON file", "Новый файл JSON"], ["empty", "", "New file", "Новый файл"]]
 
+    // Names are stored under "f:<name>": a file called "constructor" or "__proto__" must not collide
+    // with the properties every JS object already has.
+    function posOf(name: string): var {
+        const p = positions["f:" + name];
+        return Array.isArray(p) ? p : undefined;
+    }
+
+    function iconOf(name: string): string {
+        const v = customIcons["f:" + name];
+        return typeof v === "string" ? v : "";
+    }
+
     // ------------------------------------------------------------------ selection
     function isSelected(path: string): bool {
         return selection[path] === true;
@@ -112,9 +124,9 @@ Singleton {
     function setCustomIcon(name: string, path: string): void {
         const c = Object.assign({}, customIcons);
         if (path)
-            c[name] = path;
+            c["f:" + name] = path;
         else
-            delete c[name];
+            delete c["f:" + name];
         customIcons = c;
         saveTimer.restart();
     }
@@ -156,31 +168,33 @@ Singleton {
         }
     }
 
-    // Files without a place yet fill the first free cells, top to bottom, then the next column.
+    // Files without a place yet (or whose place is outside the current grid) fill the first free
+    // cells, top to bottom, then the next column. If the grid is full they stay hidden until there
+    // is room (smaller icons, bigger screen); nothing is rewritten in that case.
     function autoPlace(): void {
         if (!layoutReady || items.length === 0)
             return;
+        const inside = p => Array.isArray(p) && p[0] < cols && p[1] < rows;
         const taken = {};
         for (const e of items) {
-            const p = positions[e.name];
-            if (p)
+            const p = posOf(e.name);
+            if (inside(p))
                 taken[p[0] + "," + p[1]] = true;
         }
         let changed = false;
         const next = Object.assign({}, positions);
         for (const e of items) {
-            if (next[e.name])
+            if (inside(posOf(e.name)))
                 continue;
-            let c = 0, r = 0;
-            while (taken[c + "," + r]) {
-                r++;
-                if (r >= rows) {
-                    r = 0;
-                    c++;
-                }
-            }
-            next[e.name] = [c, r];
-            taken[c + "," + r] = true;
+            let found = null;
+            for (let c = 0; c < cols && !found; c++)
+                for (let r = 0; r < rows && !found; r++)
+                    if (!taken[c + "," + r])
+                        found = [c, r];
+            if (!found)
+                continue;
+            next["f:" + e.name] = found;
+            taken[found[0] + "," + found[1]] = true;
             changed = true;
         }
         if (changed) {
@@ -215,17 +229,17 @@ Singleton {
         const moving = new Set(sel.map(e => e.name));
         const taken = {};
         for (const e of items) {
-            const p = positions[e.name];
+            const p = posOf(e.name);
             if (p && !moving.has(e.name))
                 taken[p[0] + "," + p[1]] = true;
         }
         const next = Object.assign({}, positions);
         for (const e of sel) {
-            const p = positions[e.name] ?? [0, 0];
+            const p = posOf(e.name) ?? [0, 0];
             const c = Math.max(0, Math.min(cols - 1, p[0] + dc));
             const r = Math.max(0, Math.min(rows - 1, p[1] + dr));
             const free = nearestFree(c, r, taken);
-            next[e.name] = free;
+            next["f:" + e.name] = free;
             taken[free[0] + "," + free[1]] = true;
         }
         positions = next;
@@ -235,7 +249,8 @@ Singleton {
     // ------------------------------------------------------------------ actions
     function open(entry: var): void {
         if (entry.suffix === "desktop")
-            Quickshell.execDetached(["gio", "launch", entry.path]);
+            // Like other desktops: a launcher that is not marked executable is not run on a double click.
+            Quickshell.execDetached(["sh", "-c", 'if [ -x "$1" ]; then exec gio launch "$1"; else notify-send -a HyperStack "Ярлык не запущен" "Файл не отмечен как исполняемый (chmod +x): $1"; fi', "sh", entry.path]);
         else
             Quickshell.execDetached(["xdg-open", entry.path]);
     }
@@ -280,17 +295,20 @@ Singleton {
         const oldName = path.split("/").pop();
         if (!newName || newName === oldName || newName.includes("/") || newName === "." || newName === "..")
             return;
+        // Never onto another file (mv -n would refuse anyway, but the icon must not jump).
+        if (items.some(e => e.name === newName))
+            return;
         // The icon keeps its place and its custom picture under the new name.
         const p = Object.assign({}, positions);
-        if (p[oldName]) {
-            p[newName] = p[oldName];
-            delete p[oldName];
+        if (p["f:" + oldName]) {
+            p["f:" + newName] = p["f:" + oldName];
+            delete p["f:" + oldName];
             positions = p;
         }
-        if (customIcons[oldName]) {
+        if (customIcons["f:" + oldName]) {
             const c = Object.assign({}, customIcons);
-            c[newName] = c[oldName];
-            delete c[oldName];
+            c["f:" + newName] = c["f:" + oldName];
+            delete c["f:" + oldName];
             customIcons = c;
         }
         saveTimer.restart();
@@ -320,24 +338,27 @@ Singleton {
 
     // ------------------------------------------------------------------ persistence
     function apply(text: string): void {
-        let data = {};
+        let data;
         try {
-            data = JSON.parse(text) ?? {};
+            data = JSON.parse(text);
         } catch (err) {
-            data = {};
+            return;   // half-written or damaged file: keep what we have instead of resetting everything
         }
+        if (data === null || typeof data !== "object" || Array.isArray(data))
+            return;
         root.iconSize = (data.iconSize in root.iconSizes) ? data.iconSize : "large";
         root.sortBy = ["name", "type", "size"].includes(data.sortBy) ? data.sortBy : "name";
         root.showIcons = data.showIcons !== false;
+        const key = k => k.startsWith("f:") ? k : "f:" + k;
         const pos = {};
         for (const [k, v] of Object.entries(data.positions ?? {}))
             if (Array.isArray(v) && v.length === 2 && Number.isInteger(v[0]) && Number.isInteger(v[1]) && v[0] >= 0 && v[1] >= 0)
-                pos[k] = v;
+                pos[key(k)] = v;
         root.positions = pos;
         const icons = {};
         for (const [k, v] of Object.entries(data.customIcons ?? {}))
             if (typeof v === "string" && v.startsWith("/"))
-                icons[k] = v;
+                icons[key(k)] = v;
         root.customIcons = icons;
         root.rebuild();
     }
@@ -348,7 +369,7 @@ Singleton {
         interval: 300
         onTriggered: {
             // Forget places of files that no longer exist (not while the list is empty/unreadable).
-            const names = new Set(root.items.map(e => e.name));
+            const names = new Set(root.items.map(e => "f:" + e.name));
             const pos = {};
             for (const [k, v] of Object.entries(root.positions))
                 if (root.items.length === 0 || names.has(k))
