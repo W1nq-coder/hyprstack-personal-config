@@ -20,6 +20,7 @@ Singleton {
     // ---- settings ----
     property string iconSize: "large"      // "small" | "medium" | "large"
     property string sortBy: "name"         // "name" | "type" | "size"
+    property bool showIcons: true          // View -> Show desktop icons
     readonly property var iconSizes: ({
             small: 48,
             medium: 72,
@@ -94,6 +95,17 @@ Singleton {
         sortBy = value;
         positions = {};
         rebuild();
+        saveTimer.restart();
+    }
+
+    function setShowIcons(value: bool): void {
+        if (value === showIcons)
+            return;
+        showIcons = value;
+        if (!value) {
+            selection = {};
+            renaming = "";
+        }
         saveTimer.restart();
     }
 
@@ -256,6 +268,8 @@ Singleton {
 
     // A new folder / file with a free name; its name is then edited in place.
     function create(typeId: string, baseName: string, ext: string): void {
+        if (!showIcons)
+            setShowIcons(true);   // the new item is renamed in place, so it has to be visible
         createProc.command = ["sh", "-c", 'd="$1"; kind="$2"; n="$3"; ext="$4"; mkdir -p -- "$d" || exit 1; ' + 't="$d/$n$ext"; i=2; while [ -e "$t" ]; do t="$d/$n ($i)$ext"; i=$((i+1)); done; ' + 'case "$kind" in ' + 'dir) mkdir -- "$t" || exit 1 ;; ' + 'sh) printf "#!/usr/bin/env bash\\n\\n" > "$t" && chmod +x "$t" || exit 1 ;; ' + 'py) printf "#!/usr/bin/env python3\\n\\n" > "$t" && chmod +x "$t" || exit 1 ;; ' + 'json) printf "{}\\n" > "$t" || exit 1 ;; ' + 'md) printf "# \\n" > "$t" || exit 1 ;; ' + 'html) printf "<!doctype html>\\n<html lang=\\"ru\\">\\n<head>\\n<meta charset=\\"utf-8\\">\\n<title></title>\\n</head>\\n<body>\\n\\n</body>\\n</html>\\n" > "$t" || exit 1 ;; ' + '*) : > "$t" || exit 1 ;; ' + 'esac; printf "%s" "$t"', "sh", desktopDir, typeId, baseName, ext];
         createProc.running = true;
     }
@@ -314,6 +328,7 @@ Singleton {
         }
         root.iconSize = (data.iconSize in root.iconSizes) ? data.iconSize : "large";
         root.sortBy = ["name", "type", "size"].includes(data.sortBy) ? data.sortBy : "name";
+        root.showIcons = data.showIcons !== false;
         const pos = {};
         for (const [k, v] of Object.entries(data.positions ?? {}))
             if (Array.isArray(v) && v.length === 2 && Number.isInteger(v[0]) && Number.isInteger(v[1]) && v[0] >= 0 && v[1] >= 0)
@@ -341,6 +356,7 @@ Singleton {
             file.setText(JSON.stringify({
                 iconSize: root.iconSize,
                 sortBy: root.sortBy,
+                showIcons: root.showIcons,
                 positions: pos,
                 customIcons: root.customIcons
             }, null, 4) + "\n");

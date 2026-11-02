@@ -90,6 +90,8 @@ Item {
 
     // ------------------------------------------------------------------ keyboard
     Keys.onPressed: event => {
+        if (!DesktopIcons.showIcons)
+            return;
         const ctrl = (event.modifiers & Qt.ControlModifier) !== 0;
         const sel = DesktopIcons.selectedEntries();
         if (event.key === Qt.Key_Delete && sel.length > 0) {
@@ -127,6 +129,8 @@ Item {
                 menu.openDesktop(mouse.x, mouse.y);
                 return;
             }
+            if (!DesktopIcons.showIcons)
+                return;
             root.bandBase = ctrl ? Object.assign({}, DesktopIcons.selection) : ({});
             if (!ctrl)
                 DesktopIcons.clearSelection();
@@ -134,7 +138,7 @@ Item {
             root.bandY0 = root.bandY1 = mouse.y;
         }
         onPositionChanged: mouse => {
-            if (!(pressedButtons & Qt.LeftButton))
+            if (!(pressedButtons & Qt.LeftButton) || !DesktopIcons.showIcons)
                 return;
             root.bandX1 = mouse.x;
             root.bandY1 = mouse.y;
@@ -176,7 +180,7 @@ Item {
     }
 
     Repeater {
-        model: DesktopIcons.items
+        model: DesktopIcons.showIcons ? DesktopIcons.items : []
 
         delegate: DesktopItem {}
     }
@@ -555,7 +559,9 @@ Item {
                     id: "view",
                     text: root.l("View", "Вид"),
                     icon: "grid_view",
-                    children: [opt(D.iconSize === "large", "Large icons", "Крупные значки", () => D.setIconSize("large")), opt(D.iconSize === "medium", "Medium icons", "Средние значки", () => D.setIconSize("medium")), opt(D.iconSize === "small", "Small icons", "Мелкие значки", () => D.setIconSize("small"))]
+                    children: [opt(D.showIcons, "Show icons", "Показывать значки", () => D.setShowIcons(!D.showIcons)), {
+                            sep: true
+                        }, opt(D.iconSize === "large", "Large icons", "Крупные значки", () => D.setIconSize("large")), opt(D.iconSize === "medium", "Medium icons", "Средние значки", () => D.setIconSize("medium")), opt(D.iconSize === "small", "Small icons", "Мелкие значки", () => D.setIconSize("small"))]
                 },
                 {
                     id: "sort",
