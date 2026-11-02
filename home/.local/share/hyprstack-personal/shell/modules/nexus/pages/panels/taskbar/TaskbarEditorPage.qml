@@ -147,10 +147,22 @@ PageBase {
         moveTo(id, id === "logo" ? "left" : id === "tasks" ? "center" : "right", id === "logo" ? 0 : 1000);
     }
 
-    ColumnLayout {
+    // The page has a single content slot: one wrapper holds the layout and the drag layer.
+    Item {
+        id: wrap
+
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.top: parent.top
         width: root.cappedWidth
+        height: implicitHeight
+        implicitHeight: column.implicitHeight
+
+    ColumnLayout {
+        id: column
+
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
         spacing: Tokens.spacing.small
 
         StyledText {
@@ -168,18 +180,21 @@ PageBase {
             ZoneBox {
                 zone: "left"
                 Layout.fillWidth: true
+                Layout.fillHeight: true
                 Layout.preferredWidth: 1
             }
 
             ZoneBox {
                 zone: "center"
                 Layout.fillWidth: true
+                Layout.fillHeight: true
                 Layout.preferredWidth: 1
             }
 
             ZoneBox {
                 zone: "right"
                 Layout.fillWidth: true
+                Layout.fillHeight: true
                 Layout.preferredWidth: 1
             }
         }
@@ -213,7 +228,6 @@ PageBase {
 
         anchors.fill: parent
         z: 100
-        enabled: false
 
         Rectangle {
             visible: root.dragging && root.hoverZone !== "" && root.hoverZone !== "hidden"
@@ -226,6 +240,8 @@ PageBase {
         }
 
         StyledRect {
+            id: ghost
+
             visible: root.dragging
             x: root.dragPos.x - width / 2
             y: root.dragPos.y - height / 2
@@ -258,6 +274,8 @@ PageBase {
         }
     }
 
+    }
+
     // ------------------------------------------------------------------ a zone
     component ZoneBox: StyledRect {
         id: box
@@ -277,7 +295,8 @@ PageBase {
         }
 
         Component.onCompleted: root.boxes[zone] = box
-        Component.onDestruction: delete root.boxes[zone]
+        Component.onDestruction: if (root && root.boxes)
+            delete root.boxes[zone]
 
         implicitHeight: 40 + Math.max(flow.implicitHeight, 40) + 30
         radius: Tokens.rounding.large

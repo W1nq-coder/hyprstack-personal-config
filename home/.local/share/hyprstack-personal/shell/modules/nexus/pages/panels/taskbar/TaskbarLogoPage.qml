@@ -257,7 +257,7 @@ PageBase {
         default property alias content: slot.data
         signal clicked
 
-        implicitWidth: compact ? 64 : 120
+        implicitWidth: compact ? 64 : 150
         implicitHeight: compact ? 64 : 96
         radius: Tokens.rounding.large
         color: selected ? Qt.alpha(Colours.palette.m3primary, 0.18) : Colours.tPalette.m3surfaceContainer

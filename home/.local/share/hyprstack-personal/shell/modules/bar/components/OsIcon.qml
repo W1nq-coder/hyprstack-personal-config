@@ -125,7 +125,7 @@ Item {
         visible: false
         grabFocus: true
         color: "transparent"
-        implicitWidth: 280
+        implicitWidth: 330
         implicitHeight: menuColumn.implicitHeight + 16
 
         Rectangle {
