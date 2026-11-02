@@ -134,3 +134,7 @@
 # Уведомления с кнопками (например, «Обновить» / «Отмена») сразу раскрыты
 .local/share/hyprstack-personal/shell/modules/notifications/Notification.qml
 .local/share/hyprstack-personal/shell/modules/sidebar/Notif.qml
+# Рабочий стол в режиме «как в Windows»: значки, создание папок и файлов, меню по правому клику
+.local/share/hyprstack-personal/shell/services/DesktopIcons.qml
+.local/share/hyprstack-personal/shell/modules/background/DesktopIconLayer.qml
+.local/share/hyprstack-personal/shell/modules/background/Background.qml
