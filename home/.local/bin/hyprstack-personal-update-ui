@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# Окно обновления доработок HyperStack в терминале (открывается кнопкой «Обновить» в уведомлении).
+# Показывает, с какой версии на какую идёт обновление, и спрашивает «Да / Нет» (стрелки, Enter,
+# y / n). При «Да» всё обновление идёт здесь же, на глазах: git pull и install.sh.
+#
+# Весь скрипт — одна функция, которая вызывается последней строкой: install.sh заменяет этот
+# файл прямо во время обновления, а bash дочитывает скрипт по кускам.
+main() {
+    export LC_ALL=C.UTF-8
+    local STATE=${XDG_STATE_HOME:-$HOME/.local/state}/hyprstack-personal
+    local REPO
+    REPO=$(cat "$STATE/repo" 2>/dev/null) || { echo "Не найден репозиторий (запустите install.sh)."; read -r -n1; return 1; }
+
+    # Цвета и управление экраном.
+    local B=$'\e[1m' D=$'\e[2m' R=$'\e[0m' ACC=$'\e[38;5;215m' OK=$'\e[32m' ERR=$'\e[31m' REV=$'\e[7m'
+    local HIDE=$'\e[?25l' SHOW=$'\e[?25h'
+    trap 'printf "%s" "$SHOW"' EXIT
+
+    local local_ remote count
+    local_=$(git -C "$REPO" rev-parse HEAD 2>/dev/null)
+    remote=$(git -C "$REPO" rev-parse '@{u}' 2>/dev/null)
+    if [[ -z $local_ || -z $remote || $local_ == "$remote" ]]; then
+        printf '\n  %sОбновлений нет.%s\n\n  Нажмите любую клавишу...' "$B" "$R"; read -r -s -n1; return 0
+    fi
+    count=$(git -C "$REPO" rev-list --count "$local_..$remote")
+
+    # Текст коммитов приходит из сети: убираем управляющие символы, чтобы он не мог рисовать на экране.
+    clean() { tr -d '\000-\037\177' | cut -c1-"${COLUMNS:-100}"; }
+    local from to
+    from="$(git -C "$REPO" log -1 --format='%h  %cd' --date=format:'%d.%m.%Y %H:%M' "$local_" | clean)"
+    to="$(git -C "$REPO" log -1 --format='%h  %cd' --date=format:'%d.%m.%Y %H:%M' "$remote" | clean)"
+
+    clear
+    printf '\n  %s%sОбновление HyperStack%s\n\n' "$B" "$ACC" "$R"
+    printf '  Сейчас:   %s%s%s\n' "$D" "$from" "$R"
+    printf '  Станет:   %s%s%s\n\n' "$B" "$to" "$R"
+    printf '  %sЧто нового (%s):%s\n' "$B" "$count" "$R"
+    local line shown=0
+    while IFS= read -r line; do
+        printf '    • %s\n' "$(printf '%s' "$line" | clean)"
+        shown=$((shown + 1))
+    done < <(git -C "$REPO" log --format='%s' -n 12 "$local_..$remote")
+    ((count > shown)) && printf '    %s…и ещё %s%s\n' "$D" "$((count - shown))" "$R"
+    printf '\n  %sОболочка на несколько секунд перезапустится. Весь ход обновления виден ниже.%s\n\n' "$D" "$R"
+    printf '  %sУстановить обновление?%s\n\n' "$B" "$R"
+
+    # Выбор «Да / Нет»: слева «Да», справа «Нет» (как в Omarchy).
+    local sel=0 key rest
+    render() {
+        local yes=" Да " no=" Нет "
+        ((sel == 0)) && yes="${REV}${ACC}${B} Да ${R}" || yes="${D} Да ${R}"
+        ((sel == 1)) && no="${REV}${ACC}${B} Нет ${R}" || no="${D} Нет ${R}"
+        printf '\r\e[K    %s     %s      %s←/→ выбрать · Enter подтвердить · Esc отмена%s' "$yes" "$no" "$D" "$R"
+    }
+    printf '%s' "$HIDE"
+    render
+    while IFS= read -rsn1 key; do
+        if [[ $key == $'\e' ]]; then
+            read -rsn2 -t 0.05 rest || rest=""
+            if [[ -z $rest ]]; then sel=1; break; fi          # одиночный Esc = Нет
+            key+=$rest
+        fi
+        case $key in
+            $'\e[C' | $'\e[D' | $'\t' | h | l | j | k | р | д) ((sel = 1 - sel)); render ;;
+            y | Y | н | Н) sel=0; render; break ;;
+            n | N | т | Т | q | Q) sel=1; render; break ;;
+            "") break ;;                                      # Enter
+        esac
+    done
+    printf '%s\n\n' "$SHOW"
+
+    if ((sel == 1)); then
+        echo "$remote" > "$STATE/dismissed"
+        printf '  %sОтказ принят.%s Это обновление больше не предлагается; следующее придёт с новым коммитом.\n\n' "$B" "$R"
+        sleep 2
+        return 0
+    fi
+
+    # ---- Обновление ----
+    if [[ -n $(git -C "$REPO" status --porcelain --untracked-files=no) ]]; then
+        printf '  %sОбновление не выполнено:%s в %s есть ваши незакоммиченные правки.\n' "$ERR" "$R" "$REPO"
+        printf '  Сохраните их и повторите: git pull && ./install.sh\n\n  Нажмите любую клавишу...'
+        read -r -s -n1; return 1
+    fi
+    printf '  %s▶ git pull%s\n' "$B" "$R"
+    if ! git -C "$REPO" pull --ff-only; then
+        printf '\n  %sgit pull не удался.%s Нажмите любую клавишу...' "$ERR" "$R"; read -r -s -n1; return 1
+    fi
+    local args=(--no-wallpapers)   # коллекция обоев (~2 ГБ) при обновлении не качается
+    [[ -f $STATE/personal ]] && args+=(--personal)
+    printf '\n  %s▶ ./install.sh %s%s\n\n' "$B" "${args[*]}" "$R"
+    mkdir -p "$STATE"
+    "$REPO/install.sh" "${args[@]}" 2>&1 | tee "$STATE/last-install.log"
+    local status=${PIPESTATUS[0]}
+    if ((status == 0)); then
+        rm -f "$STATE/asked"
+        printf '\n  %s%s✔ Готово.%s HyperStack обновлён до %s.\n' "$B" "$OK" "$R" "$(git -C "$REPO" rev-parse --short HEAD)"
+    else
+        printf '\n  %s%s✘ Обновление применилось с ошибкой%s (код %s). Журнал: %s\n' "$B" "$ERR" "$R" "$status" "$STATE/last-install.log"
+    fi
+    printf '\n  Нажмите любую клавишу, чтобы закрыть окно...'
+    read -r -s -n1
+    return "$status"
+}
+main "$@"; exit $?

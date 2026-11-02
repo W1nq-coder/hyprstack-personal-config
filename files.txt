@@ -51,6 +51,7 @@
 ~ .local/bin/caelestia-session-start
 .local/bin/nightlight
 .local/bin/hyprstack-personal-update
+.local/bin/hyprstack-personal-update-ui
 .local/bin/hyprstack-greeter-sync
 .local/bin/screenshot
 .local/share/hyprstack-dictation/sounds/start.wav

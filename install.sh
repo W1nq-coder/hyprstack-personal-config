@@ -190,7 +190,7 @@ if grep -q 'hl.dsp.group.lock_active()' "$keybinds_lua" 2>/dev/null; then
     fi
 fi
 [[ -d $BACKUP ]] && echo "  прежние версии сохранены в $BACKUP"
-for script in dictation nightlight hyprstack-personal-update hyprstack-greeter-sync caelestia-session-start; do
+for script in dictation nightlight hyprstack-personal-update hyprstack-personal-update-ui hyprstack-greeter-sync caelestia-session-start; do
     [[ -f $HOME/.local/bin/$script ]] && do_ chmod +x "$HOME/.local/bin/$script"
 done
 

@@ -23,6 +23,15 @@ wait_for_notifier() {
     return 1
 }
 
+# Терминал: тот, что задан в vars.lua (terminal = "..."), затем $TERMINAL, затем известные.
+pick_terminal() {
+    local vars=${XDG_CONFIG_HOME:-$HOME/.config}/hyprstack/vars.lua t c
+    t=$(sed -n 's/^[[:space:]]*terminal[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' "$vars" 2>/dev/null | head -1)
+    for c in "${t%% *}" "${TERMINAL:-}" kitty foot alacritty wezterm ghostty konsole xterm; do
+        [[ -n $c ]] && command -v "$c" >/dev/null 2>&1 && { command -v "$c"; return; }
+    done
+}
+
 note() { notify-send -a "HyperStack" -i software-update-available "$@"; }
 
 export GIT_TERMINAL_PROMPT=0
@@ -71,23 +80,25 @@ $subjects")
 
 case $answer in
     update)
-        if [[ -n $(git -C "$REPO" status --porcelain --untracked-files=no) ]]; then
-            note "Обновление не выполнено" "В $REPO есть ваши незакоммиченные правки. Сохраните их и обновите вручную: git pull && ./install.sh"
+        # «Обновить» открывает окно терминала: там видны версии «с … на …», вопрос «Да / Нет» и весь
+        # ход обновления (см. hyprstack-personal-update-ui). Сама служба после этого заменяется
+        # терминалом (exec), поэтому обновление файла этого скрипта посреди работы ей не мешает.
+        ui=$HOME/.local/bin/hyprstack-personal-update-ui
+        term=$(pick_terminal)
+        if [[ -z $term || ! -x $ui ]]; then
+            note -u critical "Не найден терминал для обновления" "Выполните вручную в $REPO: git pull && ./install.sh"
             exit 1
         fi
-        if ! git -C "$REPO" pull --ff-only --quiet; then
-            note -u critical "Обновление не выполнено" "git pull не удался."
-            exit 1
-        fi
-        args=(--no-wallpapers)   # обои (~2 ГБ) при обновлении не качаем
-        [[ -f $STATE/personal ]] && args+=(--personal)
-        note "Применяю обновление" "Оболочка перезапустится на несколько секунд."
-        if "$REPO/install.sh" "${args[@]}" </dev/null >"$STATE/last-install.log" 2>&1; then
-            rm -f "$STATE/asked"
-            note "Готово" "HyperStack обновлён до $(git -C "$REPO" rev-parse --short HEAD)."
-        else
-            note -u critical "Обновление применилось с ошибкой" "Подробности: $STATE/last-install.log"
-        fi
+        title="Обновление HyperStack"
+        case ${term##*/} in
+            kitty) exec "$term" --class hyprstack-update --title "$title" -e "$ui" ;;
+            alacritty) exec "$term" --class hyprstack-update -T "$title" -e "$ui" ;;
+            foot) exec "$term" --app-id hyprstack-update --title "$title" "$ui" ;;
+            wezterm) exec "$term" start --class hyprstack-update -- "$ui" ;;
+            ghostty) exec "$term" --class=hyprstack-update "--title=$title" -e "$ui" ;;
+            xterm) exec "$term" -T "$title" -e "$ui" ;;
+            *) exec "$term" -e "$ui" ;;
+        esac
         ;;
     cancel)
         echo "$remote" > "$STATE/dismissed"
