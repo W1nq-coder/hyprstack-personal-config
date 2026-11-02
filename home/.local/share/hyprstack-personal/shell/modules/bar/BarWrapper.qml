@@ -26,8 +26,14 @@ Item {
     readonly property string edge: BarPosition.activeEdge
     readonly property bool atBottom: edge === "bottom"
     readonly property bool vertical: edge === "left" || edge === "right"
-    // 0 = top, 1 = bottom; follows the stacking switch so the bar slides between them
-    readonly property real bottomProgress: BarPosition.edge === "bottom" && !vertical ? 1 : Hypr.stackingProgress
+    // 0 = top, 1 = bottom; follows the stacking switch so the bar slides between the edges of the
+    // tiling and the floating layout (each has its own edge, see services/TaskbarStyle.qml)
+    readonly property real tileBottom: BarPosition.edge === "bottom" ? 1 : 0
+    readonly property real stackBottom: TaskbarStyle.stackingEdge === "bottom" ? 1 : 0
+    readonly property real bottomProgress: tileBottom + (stackBottom - tileBottom) * Hypr.stackingProgress
+    // both layouts keep the bar on the same edge: no fading needed
+    readonly property bool sameEdge: BarPosition.edge === TaskbarStyle.stackingEdge
+    readonly property real fade: sameEdge ? 1 : (Hypr.stacking ? Hypr.stackingProgress : 1 - Hypr.stackingProgress)
     // bar thickness across its edge (animated when it hides or shows)
     readonly property real thickness: vertical ? implicitWidth : implicitHeight
     readonly property var activeWorkspace: Hypr.monitorFor(screen)?.activeWorkspace
@@ -39,7 +45,7 @@ Item {
     readonly property real leftInset: edge === "left" ? thickness : sideFrame
     readonly property real rightInset: edge === "right" ? thickness : sideFrame
     readonly property int padding: Math.max(Tokens.padding.small, (Config.border.thickness * Tokens.scale))
-    readonly property int contentWidth: Hypr.stacking ? 40 * Tokens.scale : Tokens.sizes.bar.innerWidth + padding * 2
+    readonly property int contentWidth: Hypr.stacking && !vertical ? 40 * Tokens.scale : Tokens.sizes.bar.innerWidth + padding * 2
     readonly property int exclusiveZone: !disabled && (Config.bar.persistent || screenState.bar) ? contentWidth : frameThickness
     readonly property bool shouldBeVisible: !fullscreen && !disabled && (Config.bar.persistent || screenState.bar || isHovered)
     property bool isHovered
@@ -88,8 +94,8 @@ Item {
     implicitHeight: vertical ? (parent?.height ?? 0) : shownThickness
     // Slide the new bar in from its edge while the frame changes shape.
     x: edge === "right" ? (parent?.width ?? 0) - width : 0
-    y: vertical ? 0 : BarPosition.edge === "bottom" ? (parent?.height ?? 0) - height
-        : atBottom ? (parent?.height ?? 0) - height * Hypr.stackingProgress : -height * Hypr.stackingProgress
+    y: vertical ? 0 : atBottom ? (parent?.height ?? 0) - height * (BarPosition.edge === "bottom" ? 1 : Hypr.stackingProgress)
+        : -height * (BarPosition.edge === "top" ? 0 : 1 - Hypr.stackingProgress)
 
     states: State {
         name: "visible"
@@ -131,7 +137,7 @@ Item {
         y: root.atBottom ? 0 : root.height - height
 
         visible: root.shouldBeVisible && !root.vertical
-        opacity: BarPosition.edge === "bottom" ? 1 : root.atBottom ? Hypr.stackingProgress : 1 - Hypr.stackingProgress
+        opacity: root.fade
         screen: root.screen
         screenState: root.screenState
         popouts: root.popouts // qmllint disable incompatible-type
@@ -147,7 +153,7 @@ Item {
         x: root.edge === "left" ? root.width - width : 0
 
         visible: root.shouldBeVisible && root.vertical
-        opacity: 1 - Hypr.stackingProgress
+        opacity: root.fade
         screen: root.screen
         screenState: root.screenState
         popouts: root.popouts // qmllint disable incompatible-type

@@ -111,6 +111,20 @@ PageBase {
             }
         }
 
+        Variants {
+            id: stackEdgeItems
+
+            model: TaskbarStyle.edges
+
+            MenuItem {
+                required property string modelData
+                readonly property string key: modelData
+
+                icon: root.edgeIcons[modelData]
+                text: root.edgeNames[modelData]
+            }
+        }
+
         // Behaviour
         SectionHeader {
             first: true
@@ -120,8 +134,8 @@ PageBase {
         SelectRow {
             first: true
             label: root.l("Position", "Расположение")
-            subtext: root.l("Or hold an empty spot of the bar and drag it to an edge. The floating window layout keeps the bar at the bottom",
-                "Или зажмите пустое место панели и перетащите её к краю. В плавающем режиме окон панель всегда снизу")
+            subtext: root.l("Or hold an empty spot of the bar and drag it to an edge. This is the edge in the tiling mode; the floating windows mode has its own, below",
+                "Или зажмите пустое место панели и перетащите её к краю. Это сторона в режиме тайлинга; у режима «как в Windows» своя, ниже")
             menuItems: edgeItems.instances
             active: edgeItems.instances.find(i => i.key === BarPosition.edge) ?? null
             fallbackIcon: root.edgeIcons[BarPosition.edge] ?? "vertical_align_top"
@@ -159,6 +173,17 @@ PageBase {
 
         SelectRow {
             first: true
+            label: root.l("Taskbar position", "Расположение панели")
+            subtext: root.l("Bottom, top, left or right. You can also hold an empty spot of the bar and drag it to an edge",
+                "Снизу, сверху, слева или справа. Можно и зажать пустое место панели и перетащить её к краю")
+            menuItems: stackEdgeItems.instances
+            active: stackEdgeItems.instances.find(i => i.key === TaskbarStyle.stackingEdge) ?? null
+            fallbackIcon: root.edgeIcons[TaskbarStyle.stackingEdge] ?? "vertical_align_bottom"
+            fallbackText: root.edgeNames[TaskbarStyle.stackingEdge] ?? ""
+            onSelected: item => TaskbarStyle.setStackingEdge(item.key)
+        }
+
+        SelectRow {
             last: true
             label: root.l("Taskbar view", "Вид панели")
             subtext: root.l("Icons with titles, icons only, or a GNOME-style dock: the bar on one edge and the applications in a dock on the opposite one",

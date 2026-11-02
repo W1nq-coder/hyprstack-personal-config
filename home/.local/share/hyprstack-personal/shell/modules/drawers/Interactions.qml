@@ -119,7 +119,7 @@ CustomMouseArea {
 
     onPressed: event => {
         dragStart = Qt.point(event.x, event.y);
-        if (event.button === Qt.LeftButton && !Hypr.stacking && !fullscreen && inBar(event.x, event.y))
+        if (event.button === Qt.LeftButton && !fullscreen && inBar(event.x, event.y))
             barHoldTimer.restart();
     }
     onReleased: {

@@ -39,8 +39,16 @@ Item {
 
     function closeTray(): void {}
 
+    // Space the entries above and below take, so the application icons fit between them.
+    readonly property real sideHeight: entryItems.filter(c => !["logo", "spacer", "workspaces"].includes(c.entryId))
+        .reduce((total, item) => total + item.height + spacing, vPadding)
+
     // Popouts open beside the bar; currentCenter is a y coordinate here.
     function checkPopout(y: real): void {
+        if (iconTasks.visible && iconTasks.contains(mapToItem(iconTasks, width / 2, y))) {
+            popouts.hasCurrent = false;
+            return;
+        }
         const ch = entryAt(y) as EntryWrapper;
         if (!ch) {
             popouts.hasCurrent = false;
@@ -98,7 +106,7 @@ Item {
             model: ScriptModel {
                 values: {
                     const entries = root.Config.bar.entries.values.filter(e => e.enabled
-                        && !["notifications", "activeWindow"].includes(e.id));
+                        && !["notifications", "activeWindow"].includes(e.id) && (!Hypr.stacking || e.id !== "workspaces"));
                     const power = entries.findIndex(e => e.id === "power");
                     if (root.Config.sidebar.enabled && root.Config.bar.showNotifications)
                         entries.splice(power < 0 ? entries.length : power, 0, {id: "notifications", enabled: true});
@@ -174,6 +182,18 @@ Item {
                 }
             }
         }
+    }
+
+    // Personal overlay: the open applications as icons (floating layout; the labelled list does not
+    // fit sideways, and with the dock view the applications are in the dock).
+    TaskIcons {
+        id: iconTasks
+
+        anchors.centerIn: parent
+        screen: root.screen
+        edge: BarPosition.activeEdge
+        maxLength: Math.max(0, root.height - 2 * Math.max(root.sideHeight, root.vPadding + 40 * Tokens.scale) - 24 * Tokens.scale)
+        visible: Hypr.stacking && Config.bar.showTasks && maxLength > 0 && TaskbarStyle.view !== "dock"
     }
 
     // Hours over minutes, so the clock fits the narrow bar.

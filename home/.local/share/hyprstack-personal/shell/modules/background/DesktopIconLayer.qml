@@ -27,16 +27,26 @@ Item {
     readonly property bool ru: String(Tr.language || Qt.locale().name).startsWith("ru")
     function l(en: string, rus: string): string { return root.ru ? rus : en; }
 
-    // The floating layout keeps its taskbar at the bottom: icons stay above it.
-    readonly property real bottomReserve: ShellState.componentsFor(root.screen)?.bar?.exclusiveZone ?? 0
+    // Icons keep clear of the taskbar (on any edge) and of the dock (on the opposite edge).
+    readonly property var bar: ShellState.componentsFor(root.screen)?.bar
+    readonly property string barEdge: bar?.edge ?? "bottom"
+    readonly property string dockEdge: ({bottom: "top", top: "bottom", left: "right", right: "left"})[barEdge] ?? "top"
+    readonly property real dockReserve: TaskbarStyle.dock && Hypr.stacking ? 72 * Tokens.scale + Tokens.padding.small * 2 : 0
+    function reserve(edge: string): real {
+        return (barEdge === edge ? (bar?.exclusiveZone ?? 0) : 0) + (dockEdge === edge ? dockReserve : 0);
+    }
+    readonly property real resLeft: reserve("left")
+    readonly property real resRight: reserve("right")
+    readonly property real resTop: reserve("top")
+    readonly property real bottomReserve: reserve("bottom")
     readonly property real pad: Tokens.padding.large
     readonly property real cellW: DesktopIcons.iconPx + 40
     readonly property real cellH: DesktopIcons.iconPx + 56
-    readonly property int cols: Math.max(1, Math.floor((width - pad * 2) / cellW))
-    readonly property int rows: Math.max(1, Math.floor((height - pad * 2 - bottomReserve) / cellH))
+    readonly property int cols: Math.max(1, Math.floor((width - pad * 2 - resLeft - resRight) / cellW))
+    readonly property int rows: Math.max(1, Math.floor((height - pad * 2 - resTop - bottomReserve) / cellH))
 
-    function cellX(col: int): real { return root.pad + col * root.cellW; }
-    function cellY(row: int): real { return root.pad + row * root.cellH; }
+    function cellX(col: int): real { return root.pad + root.resLeft + col * root.cellW; }
+    function cellY(row: int): real { return root.pad + root.resTop + row * root.cellH; }
 
     // ---- drag state ----
     property bool dragging: false

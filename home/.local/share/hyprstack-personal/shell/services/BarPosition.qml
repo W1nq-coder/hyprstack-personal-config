@@ -2,8 +2,8 @@ pragma Singleton
 
 // Personal overlay: which screen edge the taskbar sits on (Settings → Panels →
 // Taskbar → Position, or hold an empty spot of the bar and drag it to an edge).
-// Stored in ~/.config/hyprstack/bar.json. The floating (stacking) layout always
-// keeps its own taskbar at the bottom.
+// Stored in ~/.config/hyprstack/bar.json. The floating (stacking) layout has its own
+// edge, see services/TaskbarStyle.qml.
 
 import QtQuick
 import Quickshell
@@ -16,11 +16,17 @@ Singleton {
     property string edge: "top"
     readonly property var edges: ["top", "bottom", "left", "right"]
 
-    // What the bar actually does now (the stacking layout wins)
-    readonly property string activeEdge: Hypr.stacking ? "bottom" : edge
+    // What the bar actually does now: in the floating layout the edge chosen for that layout
+    // (Settings → Panels → Taskbar → Floating windows mode), otherwise the one above
+    readonly property string activeEdge: Hypr.stacking ? TaskbarStyle.stackingEdge : edge
     readonly property bool vertical: activeEdge === "left" || activeEdge === "right"
 
+    // Dragging the bar to an edge sets the edge of the layout that is active now.
     function setEdge(value: string): void {
+        if (Hypr.stacking) {
+            TaskbarStyle.setStackingEdge(value);
+            return;
+        }
         if (!root.edges.includes(value) || value === root.edge)
             return;
         root.edge = value;
