@@ -15,11 +15,16 @@ import qs.modules.nexus
 Scope {
     id: root
 
+    property var current: null
+
     IpcHandler {
         target: "settings"
 
         function open(page: int, subpage: int): void {
-            windowComp.createObject(root, {page, subpage});
+            // One settings window at a time: asking again (e.g. a right click on the bar) replaces it.
+            if (root.current)
+                root.current.destroy();
+            root.current = windowComp.createObject(root, {page, subpage});
         }
     }
 
