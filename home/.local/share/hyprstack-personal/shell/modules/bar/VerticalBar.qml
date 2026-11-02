@@ -39,6 +39,10 @@ Item {
 
     function closeTray(): void {}
 
+    // Height left for the list of windows when it stands in the column among the other elements.
+    readonly property real flowTasksMax: Math.max(0, height - 2 * vPadding - 24 * Tokens.scale
+        - entryItems.filter(c => c.entryId !== "tasks" && c.entryId !== "spacer").reduce((total, c) => total + c.height + spacing, 0))
+
     // Space the entries above and below take, so the application icons fit between them.
     readonly property real sideHeight: entryItems.filter(c => !["logo", "spacer", "workspaces"].includes(c.entryId))
         .reduce((total, item) => total + item.height + spacing, vPadding)
@@ -105,6 +109,17 @@ Item {
 
             model: ScriptModel {
                 values: {
+                    // The floating layout uses the elements and order of the bar editor (TaskbarStyle).
+                    if (Hypr.stacking) {
+                        const z = TaskbarStyle.zones;
+                        return [...z.left, "spacer", ...z.center, "spacer", ...z.right].filter(id => {
+                            if (id === "tasks")
+                                return !TaskbarStyle.dock && !TaskbarStyle.tasksCentred && root.Config.bar.showTasks;
+                            if (id === "notifications")
+                                return root.Config.sidebar.enabled;
+                            return true;
+                        }).map(id => ({id: id, enabled: true}));
+                    }
                     const entries = root.Config.bar.entries.values.filter(e => e.enabled
                         && !["notifications", "activeWindow"].includes(e.id) && (!Hypr.stacking || e.id !== "workspaces"));
                     const power = entries.findIndex(e => e.id === "power");
@@ -127,6 +142,17 @@ Item {
                     roleValue: "logo"
                     delegate: EntryWrapper {
                         OsIcon {}
+                    }
+                }
+                DelegateChoice {
+                    roleValue: "tasks"
+                    delegate: EntryWrapper {
+                        TaskIcons {
+                            screen: root.screen
+                            edge: BarPosition.activeEdge
+                            maxLength: root.flowTasksMax
+                            visible: Hypr.stacking && maxLength > 0
+                        }
                     }
                 }
                 DelegateChoice {
@@ -193,7 +219,7 @@ Item {
         screen: root.screen
         edge: BarPosition.activeEdge
         maxLength: Math.max(0, root.height - 2 * Math.max(root.sideHeight, root.vPadding + 40 * Tokens.scale) - 24 * Tokens.scale)
-        visible: Hypr.stacking && Config.bar.showTasks && maxLength > 0 && TaskbarStyle.view !== "dock"
+        visible: Hypr.stacking && Config.bar.showTasks && maxLength > 0 && TaskbarStyle.view !== "dock" && TaskbarStyle.tasksCentred
     }
 
     // Hours over minutes, so the clock fits the narrow bar.

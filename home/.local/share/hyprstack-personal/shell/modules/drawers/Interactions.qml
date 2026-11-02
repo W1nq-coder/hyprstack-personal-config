@@ -119,6 +119,9 @@ CustomMouseArea {
 
     onPressed: event => {
         dragStart = Qt.point(event.x, event.y);
+        // Personal overlay: right click on the taskbar of the floating layout opens its editor.
+        if (event.button === Qt.RightButton && Hypr.stacking && !fullscreen && inBar(event.x, event.y))
+            TaskbarStyle.openSettings(12);
         if (event.button === Qt.LeftButton && !fullscreen && inBar(event.x, event.y))
             barHoldTimer.restart();
     }

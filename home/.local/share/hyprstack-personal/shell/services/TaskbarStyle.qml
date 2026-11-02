@@ -11,6 +11,7 @@ pragma Singleton
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Hyprstack.Config
 
 Singleton {
     id: root
@@ -31,6 +32,59 @@ Singleton {
     property var layout: null              // array of element ids, see the editor
 
     readonly property bool dock: view === "dock"
+
+    // ---- layout of the bar elements in the floating layout ----
+    // Elements the editor can place; everything not placed is hidden. "tasks" is the list of open windows.
+    readonly property var catalog: ["logo", "tasks", "tray", "clock", "statusIcons", "vpn", "notifications", "power"]
+    // The default follows the element switches of Settings → Panels → Taskbar, so what was switched off
+    // there stays off until the layout is edited.
+    readonly property var defaultLayout: {
+        const entries = GlobalConfig.bar.entries.values;
+        const on = id => id === "notifications" ? GlobalConfig.bar.showNotifications : (entries.find(e => e.id === id)?.enabled ?? true);
+        return ["logo", "spacer", "tasks", "spacer", ...["tray", "clock", "statusIcons", "vpn", "notifications", "power"].filter(on)].filter(id => id === "spacer" || id === "tasks" || on(id));
+    }
+
+    // The saved list split into the three zones around its two "spacer" markers; unknown or repeated
+    // ids are dropped, so a damaged file can never break the bar.
+    function zonesOf(list: var): var {
+        const src = Array.isArray(list) ? list : defaultLayout;
+        const zones = [[], [], []];
+        const seen = new Set();
+        let z = 0;
+        for (const id of src) {
+            if (id === "spacer") {
+                if (z < 2)
+                    z++;
+                continue;
+            }
+            if (!catalog.includes(id) || seen.has(id))
+                continue;
+            seen.add(id);
+            zones[z].push(id);
+        }
+        return {
+            left: zones[0],
+            center: zones[1],
+            right: zones[2]
+        };
+    }
+
+    function layoutOf(zones: var): var {
+        return [...zones.left, "spacer", ...zones.center, "spacer", ...zones.right];
+    }
+
+    readonly property var zones: zonesOf(layout)
+    readonly property var hidden: catalog.filter(id => !zones.left.includes(id) && !zones.center.includes(id) && !zones.right.includes(id))
+    // "tasks" alone in the middle zone stays exactly centred on the screen (see Bar.qml).
+    readonly property bool tasksCentred: zones.center.length === 1 && zones.center[0] === "tasks"
+
+    function setZones(zones: var): void {
+        setLayout(layoutOf(zones));
+    }
+
+    function resetLayout(): void {
+        setLayout(null);
+    }
 
     function setView(value: string): void {
         if (!views.includes(value) || value === view)

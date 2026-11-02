@@ -38,6 +38,32 @@ Item {
     readonly property real sideWidth: entryItems.filter(c => !["logo", "spacer", "workspaces", "activeWindow"].includes(c.entryId))
         .reduce((width, item) => width + item.width + spacing, hPadding)
 
+    // Width left for the list of windows when it stands in the row between the other elements.
+    readonly property real flowTasksMax: Math.max(0, width - 2 * hPadding - 24 * Tokens.scale
+        - rowEntries.filter(c => c.entryId !== "tasks" && c.entryId !== "spacer").reduce((total, c) => total + c.width + spacing, 0))
+
+    Component {
+        id: flowLabels
+
+        Tasks {
+            screen: root.screen
+            popouts: root.popouts
+            maxWidth: root.flowTasksMax
+            visible: Hypr.stacking && maxWidth > 0
+        }
+    }
+
+    Component {
+        id: flowIcons
+
+        TaskIcons {
+            screen: root.screen
+            edge: BarPosition.activeEdge
+            maxLength: root.flowTasksMax
+            visible: Hypr.stacking && maxLength > 0
+        }
+    }
+
     function entryAt(x: real): Item {
         for (const item of entryItems) {
             if (item.entryId === "spacer") continue;
@@ -140,6 +166,18 @@ Item {
 
             model: ScriptModel {
                 values: {
+                    // Personal overlay: in the floating layout the elements and their order come from the bar
+                    // editor (services/TaskbarStyle.qml); the list of windows is an element of its own.
+                    if (Hypr.stacking) {
+                        const z = TaskbarStyle.zones;
+                        return [...z.left, "spacer", ...z.center, "spacer", ...z.right].filter(id => {
+                            if (id === "tasks")
+                                return !TaskbarStyle.dock && !TaskbarStyle.tasksCentred && root.Config.bar.showTasks;
+                            if (id === "notifications")
+                                return root.Config.sidebar.enabled;
+                            return true;
+                        }).map(id => ({id: id, enabled: true}));
+                    }
                     const entries = root.Config.bar.entries.values.filter(e => e.enabled
                         && !["notifications", "activeWindow"].includes(e.id) && (!Hypr.stacking || e.id !== "workspaces"));
                     // Also covers configurations saved before this entry existed.
@@ -164,6 +202,14 @@ Item {
                     delegate: EntryWrapper {
                         OsIcon {
                             objectName: "taskbarLogo"
+                        }
+                    }
+                }
+                DelegateChoice {
+                    roleValue: "tasks"
+                    delegate: EntryWrapper {
+                        Loader {
+                            sourceComponent: TaskbarStyle.view === "icons" ? flowIcons : flowLabels
                         }
                     }
                 }
@@ -267,7 +313,7 @@ Item {
         screen: root.screen
         popouts: root.popouts
         maxWidth: Math.max(0, root.width - 2 * Math.max(root.sideWidth, root.hPadding + 40 * Tokens.scale) - 24 * Tokens.scale)
-        visible: Hypr.stacking && Config.bar.showTasks && maxWidth > 0 && TaskbarStyle.view === "labels"
+        visible: Hypr.stacking && Config.bar.showTasks && maxWidth > 0 && TaskbarStyle.view === "labels" && TaskbarStyle.tasksCentred
     }
 
     TaskIcons {
@@ -277,7 +323,7 @@ Item {
         screen: root.screen
         edge: BarPosition.activeEdge
         maxLength: Math.max(0, root.width - 2 * Math.max(root.sideWidth, root.hPadding + 40 * Tokens.scale) - 24 * Tokens.scale)
-        visible: Hypr.stacking && Config.bar.showTasks && maxLength > 0 && TaskbarStyle.view === "icons"
+        visible: Hypr.stacking && Config.bar.showTasks && maxLength > 0 && TaskbarStyle.view === "icons" && TaskbarStyle.tasksCentred
     }
 
     component EntryWrapper: Item {

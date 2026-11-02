@@ -242,10 +242,17 @@ PageBase {
             onToggled: root.targetConfig.bar.showTasks = checked
         }
 
-        SectionHeader { text: root.l("Logo", "Логотип") }
+        SectionHeader { text: root.l("Logo and layout", "Логотип и состав") }
 
         NavRow {
             first: true
+            icon: "dock_to_bottom"
+            text: root.l("Customize taskbar", "Настроить панель задач")
+            subtext: root.l("Drag elements between the left, centre and right zones or hide them", "Перетаскивайте элементы между зонами слева, по центру и справа или скрывайте их")
+            onClicked: root.nState.openSubPage(12)
+        }
+
+        NavRow {
             last: true
             icon: "image"
             text: root.l("Taskbar logo", "Логотип панели")

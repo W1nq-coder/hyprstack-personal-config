@@ -146,3 +146,4 @@
 .local/share/hyprstack-personal/shell/modules/bar/Bar.qml
 .local/share/hyprstack-personal/shell/modules/bar/Dock.qml
 .local/share/hyprstack-personal/shell/modules/bar/components/TaskIcons.qml
+.local/share/hyprstack-personal/shell/modules/nexus/pages/panels/taskbar/TaskbarEditorPage.qml
