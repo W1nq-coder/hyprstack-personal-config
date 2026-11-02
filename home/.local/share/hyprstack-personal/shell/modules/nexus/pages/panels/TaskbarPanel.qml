@@ -93,6 +93,24 @@ PageBase {
             }
         }
 
+        Variants {
+            id: viewItems
+
+            model: TaskbarStyle.views
+
+            MenuItem {
+                required property string modelData
+                readonly property string key: modelData
+
+                icon: ({labels: "view_list", icons: "apps", dock: "dock_to_bottom"})[modelData]
+                text: ({
+                        labels: root.l("Icons with titles", "Значки с названиями"),
+                        icons: root.l("Icons only", "Только значки"),
+                        dock: root.l("Dock (GNOME style)", "Док (как в GNOME)")
+                    })[modelData]
+            }
+        }
+
         // Behaviour
         SectionHeader {
             first: true
@@ -134,6 +152,22 @@ PageBase {
             to: 200
             stepSize: 5
             onMoved: v => GlobalConfig.bar.dragThreshold = v
+        }
+
+        // Floating (Windows-like) layout
+        SectionHeader { text: root.l("Floating windows mode", "Режим «как в Windows»") }
+
+        SelectRow {
+            first: true
+            last: true
+            label: root.l("Taskbar view", "Вид панели")
+            subtext: root.l("Icons with titles, icons only, or a GNOME-style dock: the bar on one edge and the applications in a dock on the opposite one",
+                "Значки с названиями, только значки или док как в GNOME: панель с одной стороны, а приложения в доке с противоположной")
+            menuItems: viewItems.instances
+            active: viewItems.instances.find(i => i.key === TaskbarStyle.view) ?? null
+            fallbackIcon: "view_list"
+            fallbackText: ""
+            onSelected: item => TaskbarStyle.setView(item.key)
         }
 
         // Components
@@ -181,6 +215,17 @@ PageBase {
             text: Tr.tr("Applications in stacking mode")
             checked: root.targetConfig.bar.showTasks
             onToggled: root.targetConfig.bar.showTasks = checked
+        }
+
+        SectionHeader { text: root.l("Logo", "Логотип") }
+
+        NavRow {
+            first: true
+            last: true
+            icon: "image"
+            text: root.l("Taskbar logo", "Логотип панели")
+            subtext: root.l("HyperStack, distribution, symbols or your own picture", "HyperStack, дистрибутив, значки или своя картинка")
+            onClicked: root.nState.openSubPage(11)
         }
 
         SectionHeader {

@@ -14,6 +14,8 @@ import "modules/switcher" as SwitcherModule
 import "modules/polkit" as PolkitModule
 // Personal overlay: makes the VPN app (loaded on demand) a fully known module
 import "modules/vpn" as PersonalVpn
+// Personal overlay: GNOME-style dock of the floating layout
+import "modules/bar" as PersonalBar
 import QtQuick
 import Quickshell
 import Hyprstack
@@ -38,6 +40,7 @@ ShellRoot {
 
     Background {}
     Drawers {}
+    PersonalBar.Dock {} // dock with the applications (personal overlay)
     AreaPicker {}
     Lock {
         id: lock

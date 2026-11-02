@@ -138,3 +138,11 @@
 .local/share/hyprstack-personal/shell/services/DesktopIcons.qml
 .local/share/hyprstack-personal/shell/modules/background/DesktopIconLayer.qml
 .local/share/hyprstack-personal/shell/modules/background/Background.qml
+# Панель задач: логотип (выбор картинки, меню по правому клику)
+.local/share/hyprstack-personal/shell/services/TaskbarStyle.qml
+.local/share/hyprstack-personal/shell/modules/bar/components/OsIcon.qml
+.local/share/hyprstack-personal/shell/modules/nexus/pages/panels/taskbar/TaskbarLogoPage.qml
+# Панель задач: три вида (значки, док)
+.local/share/hyprstack-personal/shell/modules/bar/Bar.qml
+.local/share/hyprstack-personal/shell/modules/bar/Dock.qml
+.local/share/hyprstack-personal/shell/modules/bar/components/TaskIcons.qml

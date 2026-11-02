@@ -135,6 +135,10 @@ QtObject {
                 Component {
                     BarClock {}
                 }
+                // Personal: 11 = taskbar logo
+                Component {
+                    TaskbarLogoPage {}
+                }
             }
         },
         Component {
