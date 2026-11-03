@@ -30,8 +30,8 @@ Item {
     // Icons keep clear of the taskbar (on any edge) and of the dock (on the opposite edge).
     readonly property var bar: ShellState.componentsFor(root.screen)?.bar
     readonly property string barEdge: bar?.edge ?? "bottom"
-    readonly property string dockEdge: ({bottom: "top", top: "bottom", left: "right", right: "left"})[barEdge] ?? "top"
-    readonly property real dockReserve: TaskbarStyle.dock && Hypr.stacking ? 72 * Tokens.scale + Tokens.padding.small * 2 : 0
+    readonly property string dockEdge: TaskbarStyle.dockActualEdge
+    readonly property real dockReserve: TaskbarStyle.dock && Hypr.stacking ? (52 * TaskbarStyle.dockScale / 100 + 20) * Tokens.scale + TaskbarStyle.dockGap * Tokens.scale : 0
     function reserve(edge: string): real {
         return (barEdge === edge ? (bar?.exclusiveZone ?? 0) : 0) + (dockEdge === edge ? dockReserve : 0);
     }

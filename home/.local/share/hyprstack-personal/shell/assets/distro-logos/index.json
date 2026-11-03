@@ -1,0 +1,538 @@
+[
+ {
+  "id": "almalinux",
+  "name": "Alma Linux"
+ },
+ {
+  "id": "alpine",
+  "name": "Alpine"
+ },
+ {
+  "id": "aosc",
+  "name": "AOSC OS"
+ },
+ {
+  "id": "apple",
+  "name": "Apple"
+ },
+ {
+  "id": "archlinux",
+  "name": "Arch Linux"
+ },
+ {
+  "id": "archcraft",
+  "name": "Archcraft"
+ },
+ {
+  "id": "archlabs",
+  "name": "ArchLabs"
+ },
+ {
+  "id": "arcolinux",
+  "name": "ArcoLinux"
+ },
+ {
+  "id": "arduino",
+  "name": "Arduino"
+ },
+ {
+  "id": "artix",
+  "name": "Artix Linux"
+ },
+ {
+  "id": "awesome",
+  "name": "Awesome WM"
+ },
+ {
+  "id": "biglinux",
+  "name": "BigLinux"
+ },
+ {
+  "id": "bspwm",
+  "name": "bspwm"
+ },
+ {
+  "id": "budgie",
+  "name": "Budgie"
+ },
+ {
+  "id": "cachyos",
+  "name": "CachyOS"
+ },
+ {
+  "id": "centos",
+  "name": "CentOS"
+ },
+ {
+  "id": "cinnamon",
+  "name": "Cinnamon"
+ },
+ {
+  "id": "codeberg",
+  "name": "Codeberg"
+ },
+ {
+  "id": "coreos",
+  "name": "CoreOS"
+ },
+ {
+  "id": "crystal",
+  "name": "Crystal Linux"
+ },
+ {
+  "id": "debian",
+  "name": "Debian"
+ },
+ {
+  "id": "deepin",
+  "name": "Deepin"
+ },
+ {
+  "id": "devuan",
+  "name": "Devuan"
+ },
+ {
+  "id": "docker",
+  "name": "Docker"
+ },
+ {
+  "id": "dwm",
+  "name": "dwm"
+ },
+ {
+  "id": "elementary",
+  "name": "elementary OS"
+ },
+ {
+  "id": "endeavour",
+  "name": "Endeavour OS"
+ },
+ {
+  "id": "enlightenment",
+  "name": "Enlightenment"
+ },
+ {
+  "id": "fdroid",
+  "name": "F-droid"
+ },
+ {
+  "id": "fedora",
+  "name": "Fedora"
+ },
+ {
+  "id": "fedora-inverse",
+  "name": "Fedora (inverse)"
+ },
+ {
+  "id": "ferris",
+  "name": "Ferris"
+ },
+ {
+  "id": "ffmpeg",
+  "name": "FFmpeg"
+ },
+ {
+  "id": "flathub",
+  "name": "Flathub"
+ },
+ {
+  "id": "fluxbox",
+  "name": "Fluxbox"
+ },
+ {
+  "id": "forgejo",
+  "name": "Forgejo"
+ },
+ {
+  "id": "fosdem",
+  "name": "FOSDEM"
+ },
+ {
+  "id": "freebsd",
+  "name": "FreeBSD"
+ },
+ {
+  "id": "freecad",
+  "name": "FreeCAD"
+ },
+ {
+  "id": "freedesktop",
+  "name": "freedesktop.org"
+ },
+ {
+  "id": "garuda",
+  "name": "Garuda Linux"
+ },
+ {
+  "id": "gentoo",
+  "name": "Gentoo"
+ },
+ {
+  "id": "gimp",
+  "name": "GIMP"
+ },
+ {
+  "id": "gitea",
+  "name": "Gitea"
+ },
+ {
+  "id": "gnome",
+  "name": "GNOME"
+ },
+ {
+  "id": "gnu-guix",
+  "name": "GNU Guix"
+ },
+ {
+  "id": "gtk",
+  "name": "GTK"
+ },
+ {
+  "id": "hyperbola",
+  "name": "Hyperbola GNU/Linux-libre"
+ },
+ {
+  "id": "hyprland",
+  "name": "Hyprland"
+ },
+ {
+  "id": "i3",
+  "name": "i3"
+ },
+ {
+  "id": "illumos",
+  "name": "illumos"
+ },
+ {
+  "id": "inkscape",
+  "name": "Inkscape"
+ },
+ {
+  "id": "jwm",
+  "name": "JWM"
+ },
+ {
+  "id": "kali-linux",
+  "name": "Kali Linux"
+ },
+ {
+  "id": "kde",
+  "name": "KDE"
+ },
+ {
+  "id": "kde-neon",
+  "name": "KDE Neon"
+ },
+ {
+  "id": "kde-plasma",
+  "name": "KDE Plasma"
+ },
+ {
+  "id": "kdenlive",
+  "name": "Kdenlive"
+ },
+ {
+  "id": "kicad",
+  "name": "KiCad"
+ },
+ {
+  "id": "krita",
+  "name": "Krita"
+ },
+ {
+  "id": "kubuntu",
+  "name": "Kubuntu"
+ },
+ {
+  "id": "kubuntu-inverse",
+  "name": "Kubuntu (inverse)"
+ },
+ {
+  "id": "libreoffice",
+  "name": "LibreOffice"
+ },
+ {
+  "id": "libreofficebase",
+  "name": "LibreOffice Base"
+ },
+ {
+  "id": "libreofficecalc",
+  "name": "LibreOffice Calc"
+ },
+ {
+  "id": "libreofficedraw",
+  "name": "LibreOffice Draw"
+ },
+ {
+  "id": "libreofficeimpress",
+  "name": "LibreOffice Impress"
+ },
+ {
+  "id": "libreofficemath",
+  "name": "LibreOffice Math"
+ },
+ {
+  "id": "libreofficewriter",
+  "name": "LibreOffice Writer"
+ },
+ {
+  "id": "linuxmint",
+  "name": "Linux Mint"
+ },
+ {
+  "id": "linuxmint-inverse",
+  "name": "Linux Mint (inverse)"
+ },
+ {
+  "id": "locos",
+  "name": "Loc-OS"
+ },
+ {
+  "id": "lxde",
+  "name": "LXDE"
+ },
+ {
+  "id": "lxle",
+  "name": "LXLE Linux"
+ },
+ {
+  "id": "lxqt",
+  "name": "LXQt"
+ },
+ {
+  "id": "mageia",
+  "name": "Mageia"
+ },
+ {
+  "id": "mandriva",
+  "name": "Mandriva"
+ },
+ {
+  "id": "manjaro",
+  "name": "Manjaro"
+ },
+ {
+  "id": "mate",
+  "name": "MATE"
+ },
+ {
+  "id": "mpv",
+  "name": "mpv"
+ },
+ {
+  "id": "mxlinux",
+  "name": "MX Linux"
+ },
+ {
+  "id": "neovim",
+  "name": "Neovim"
+ },
+ {
+  "id": "nixos",
+  "name": "NixOS"
+ },
+ {
+  "id": "nobara",
+  "name": "Nobara Linux"
+ },
+ {
+  "id": "octoprint",
+  "name": "Octoprint"
+ },
+ {
+  "id": "openbsd",
+  "name": "OpenBSD"
+ },
+ {
+  "id": "openscad",
+  "name": "OpenSCAD"
+ },
+ {
+  "id": "opensuse",
+  "name": "OpenSUSE"
+ },
+ {
+  "id": "leap",
+  "name": "openSUSE Leap"
+ },
+ {
+  "id": "tumbleweed",
+  "name": "openSUSE Tumbleweed"
+ },
+ {
+  "id": "openwrt",
+  "name": "OpenWrt"
+ },
+ {
+  "id": "osh",
+  "name": "OSH"
+ },
+ {
+  "id": "oshwa",
+  "name": "OSHWA"
+ },
+ {
+  "id": "osi",
+  "name": "OSI"
+ },
+ {
+  "id": "parabola",
+  "name": "Parabola GNU/Linux-libre"
+ },
+ {
+  "id": "parrot",
+  "name": "Parrot OS"
+ },
+ {
+  "id": "pop-os",
+  "name": "Pop!_OS"
+ },
+ {
+  "id": "postmarketos",
+  "name": "PostmarketOS"
+ },
+ {
+  "id": "prusaslicer",
+  "name": "Prusa Slicer"
+ },
+ {
+  "id": "puppy",
+  "name": "Puppy Linux"
+ },
+ {
+  "id": "qt",
+  "name": "Qt"
+ },
+ {
+  "id": "qtile",
+  "name": "Qtile"
+ },
+ {
+  "id": "qubesos",
+  "name": "QubesOS"
+ },
+ {
+  "id": "raspberry-pi",
+  "name": "Raspberry pi"
+ },
+ {
+  "id": "redhat",
+  "name": "Red Hat"
+ },
+ {
+  "id": "reprap",
+  "name": "RepRap"
+ },
+ {
+  "id": "riscv",
+  "name": "RISC-V"
+ },
+ {
+  "id": "river",
+  "name": "River"
+ },
+ {
+  "id": "rocky-linux",
+  "name": "Rocky Linux"
+ },
+ {
+  "id": "sabayon",
+  "name": "Sabayon"
+ },
+ {
+  "id": "slackware",
+  "name": "Slackware"
+ },
+ {
+  "id": "slackware-inverse",
+  "name": "Slackware (inverse)"
+ },
+ {
+  "id": "snappy",
+  "name": "Snappy"
+ },
+ {
+  "id": "solus",
+  "name": "Solus"
+ },
+ {
+  "id": "sway",
+  "name": "Sway"
+ },
+ {
+  "id": "tails",
+  "name": "Tails"
+ },
+ {
+  "id": "thunderbird",
+  "name": "Thunderbird"
+ },
+ {
+  "id": "tor",
+  "name": "Tor Browser"
+ },
+ {
+  "id": "trisquel",
+  "name": "Trisquel GNU/Linux"
+ },
+ {
+  "id": "tux",
+  "name": "Tux"
+ },
+ {
+  "id": "typst",
+  "name": "Typst"
+ },
+ {
+  "id": "ubuntu",
+  "name": "Ubuntu"
+ },
+ {
+  "id": "ubuntu-inverse",
+  "name": "Ubuntu (inverse)"
+ },
+ {
+  "id": "vanilla",
+  "name": "Vanilla OS"
+ },
+ {
+  "id": "void",
+  "name": "Void"
+ },
+ {
+  "id": "vscodium",
+  "name": "VS Codium"
+ },
+ {
+  "id": "wayland",
+  "name": "Wayland"
+ },
+ {
+  "id": "wikimedia",
+  "name": "Wikimedia"
+ },
+ {
+  "id": "wireguard",
+  "name": "WireGuard"
+ },
+ {
+  "id": "xerolinux",
+  "name": "XeroLinux"
+ },
+ {
+  "id": "xfce",
+  "name": "XFCE"
+ },
+ {
+  "id": "xmonad",
+  "name": "Xmonad"
+ },
+ {
+  "id": "xorg",
+  "name": "Xorg"
+ },
+ {
+  "id": "zorin",
+  "name": "Zorin OS"
+ }
+]

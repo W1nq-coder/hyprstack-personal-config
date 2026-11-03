@@ -64,6 +64,9 @@ Item {
         }
     }
 
+    // The list of windows when it stands alone in the middle (used by the in-place editor).
+    readonly property Item centredTasksItem: tasks.visible ? tasks : (iconTasks.visible ? iconTasks : null)
+
     function entryAt(x: real): Item {
         for (const item of entryItems) {
             if (item.entryId === "spacer") continue;
@@ -156,6 +159,26 @@ Item {
         }
     }
 
+    // Personal overlay: after the order of the elements changes the model is emptied for a moment and
+    // filled again; the list delegates otherwise kept the pictures of the old order.
+    property bool rebuilding: false
+
+    Connections {
+        target: TaskbarStyle
+
+        function onLayoutChanged(): void {
+            root.rebuilding = true;
+            rebuildTimer.restart();
+        }
+    }
+
+    Timer {
+        id: rebuildTimer
+
+        interval: 1
+        onTriggered: root.rebuilding = false
+    }
+
     RowLayout {
         id: layout
         anchors.fill: parent
@@ -165,7 +188,12 @@ Item {
             id: repeater
 
             model: ScriptModel {
+                // Elements are told apart by key, so moving one in the editor moves its delegate
+                // instead of rewriting the delegates in place (which left the old picture on screen).
+                objectProp: "key"
                 values: {
+                    if (root.rebuilding)
+                        return [];
                     // Personal overlay: in the floating layout the elements and their order come from the bar
                     // editor (services/TaskbarStyle.qml); the list of windows is an element of its own.
                     if (Hypr.stacking) {
@@ -176,7 +204,7 @@ Item {
                             if (id === "notifications")
                                 return root.Config.sidebar.enabled;
                             return true;
-                        }).map(id => ({id: id, enabled: true}));
+                        }).map((id, i, all) => ({id: id, key: id === "spacer" ? "spacer" + all.slice(0, i).filter(x => x === "spacer").length : id, enabled: true}));
                     }
                     const entries = root.Config.bar.entries.values.filter(e => e.enabled
                         && !["notifications", "activeWindow"].includes(e.id) && (!Hypr.stacking || e.id !== "workspaces"));
@@ -184,7 +212,7 @@ Item {
                     const power = entries.findIndex(e => e.id === "power");
                     if (root.Config.sidebar.enabled && root.Config.bar.showNotifications)
                         entries.splice(power < 0 ? entries.length : power, 0, {id: "notifications", enabled: true});
-                    return entries;
+                    return entries.map(e => ({id: e.id, key: e.id, enabled: e.enabled}));
                 }
             }
 

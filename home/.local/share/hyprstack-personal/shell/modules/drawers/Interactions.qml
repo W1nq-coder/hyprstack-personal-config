@@ -119,9 +119,10 @@ CustomMouseArea {
 
     onPressed: event => {
         dragStart = Qt.point(event.x, event.y);
-        // Personal overlay: right click on the taskbar of the floating layout opens its editor.
-        if (event.button === Qt.RightButton && Hypr.stacking && !fullscreen && inBar(event.x, event.y))
-            TaskbarStyle.openSettings(12);
+        // Personal overlay: right click on the taskbar of the floating layout opens a small menu
+        // (customize / settings); nothing opens by accident.
+        if (event.button === Qt.RightButton && Hypr.stacking && !fullscreen && !TaskbarStyle.editing && inBar(event.x, event.y))
+            bar.openMenu(event.x - bar.x, event.y - bar.y);
         if (event.button === Qt.LeftButton && !fullscreen && inBar(event.x, event.y))
             barHoldTimer.restart();
     }
@@ -150,6 +151,16 @@ CustomMouseArea {
                 root.bar.closeTray();
             }
         }
+    }
+
+    readonly property alias editPanel: editPanel
+
+    BarEditPanel {
+        id: editPanel
+
+        bar: root.bar
+        areaWidth: root.width
+        areaHeight: root.height
     }
 
     // Where the bar lands when the button is released

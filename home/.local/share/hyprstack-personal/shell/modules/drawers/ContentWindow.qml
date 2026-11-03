@@ -61,6 +61,8 @@ StyledWindow {
     }
 
     property color surfaceColour: Colours.tPalette.m3surface
+    // Personal overlay: the floating layout's bar/frame colour can be darkened and made translucent.
+    readonly property color frameColour: Hypr.stacking ? TaskbarStyle.tone(surfaceColour, TaskbarStyle.barDim, TaskbarStyle.barOpacity) : surfaceColour
 
     readonly property int dragMaskPadding: {
         if (Hypr.stacking || !Tiling.desktopFrame)
@@ -91,8 +93,25 @@ StyledWindow {
     WlrLayershell.keyboardFocus: screenState.sidebar || screenState.launcher || screenState.session
         ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None
 
+    // Personal overlay: while the taskbar is edited in place only the bar and its card take input.
     mask: hasFullscreen && !(contentItem.Config.general.showOverFullscreen && focusGrab.active)
-        ? emptyRegion : regions
+        ? emptyRegion : (TaskbarStyle.editing && Hypr.stacking) ? editRegion : regions
+
+    Region {
+        id: editRegion
+
+        x: bar.x
+        y: bar.y
+        width: bar.width
+        height: bar.height
+
+        Region {
+            x: interactions.editPanel.x
+            y: interactions.editPanel.y
+            width: interactions.editPanel.width
+            height: interactions.editPanel.height
+        }
+    }
 
     anchors.top: true
     anchors.bottom: true
@@ -170,12 +189,12 @@ StyledWindow {
 
     Item {
         anchors.fill: parent
-        opacity: root.surfaceColour.a
+        opacity: root.frameColour.a
 
         BlobGroup {
             id: blobGroup
 
-            color: root.surfaceColour
+            color: root.frameColour
             smoothing: (root.contentItem.Config.border.smoothing * root.contentItem.Tokens.scale)
             shadowColor: Effects.uiShadowsEnabled
                 ? Qt.alpha(Colours.palette.m3shadow, Math.max(0, root.shadowOpacity)) : "transparent"

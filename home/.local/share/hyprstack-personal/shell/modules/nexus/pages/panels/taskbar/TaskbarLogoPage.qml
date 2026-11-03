@@ -54,9 +54,11 @@ PageBase {
                             case "hyprstack":
                                 return hyprLogo;
                             case "distro":
-                                return distroLogo;
+                                return TaskbarStyle.detectedLogo !== "" ? catalogueDetected : distroLogo;
                             case "glyph":
                                 return glyphLogo;
+                            case "logo":
+                                return TaskbarStyle.logoFile(TaskbarStyle.logoId) !== "" ? catalogueLogo : hyprLogo;
                             case "image":
                                 return TaskbarStyle.logoPath !== "" ? imageLogo : hyprLogo;
                             default:
@@ -114,9 +116,78 @@ PageBase {
 
                 ColouredIcon {
                     anchors.centerIn: parent
-                    source: SysInfo.osLogo
+                    source: TaskbarStyle.detectedLogo !== "" ? Paths.fileUrl(TaskbarStyle.logoFile(TaskbarStyle.detectedLogo)) : SysInfo.osLogo
                     implicitSize: 32
                     colour: Colours.palette.m3tertiary
+                }
+            }
+        }
+
+        // ---- distributions (catalogue with search) ----
+        SectionHeader { text: root.l("Distributions and projects", "Дистрибутивы и проекты") }
+
+        StyledRect {
+            Layout.fillWidth: true
+            implicitHeight: 44
+            radius: Tokens.rounding.full
+            color: Colours.tPalette.m3surfaceContainer
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 16
+                anchors.rightMargin: 16
+                spacing: 10
+
+                MaterialIcon {
+                    text: "search"
+                    color: Colours.palette.m3onSurfaceVariant
+                }
+
+                StyledTextField {
+                    id: search
+
+                    Layout.fillWidth: true
+                    placeholderText: root.l("Search by name (Arch, Fedora, Ubuntu…)", "Поиск по названию (Arch, Fedora, Ubuntu…)")
+                }
+            }
+        }
+
+        StyledText {
+            visible: logoGrid.count === 0
+            text: root.l("Nothing found", "Ничего не найдено")
+            color: Colours.palette.m3onSurfaceVariant
+        }
+
+        Flow {
+            id: logoGrid
+
+            readonly property var found: {
+                const q = search.text.trim().toLowerCase();
+                return TaskbarStyle.catalogue.filter(e => q === "" || e.name.toLowerCase().includes(q) || e.id.includes(q));
+            }
+            readonly property int count: found.length
+
+            Layout.fillWidth: true
+            spacing: 8
+
+            Repeater {
+                model: logoGrid.found
+
+                LogoCard {
+                    id: entry
+
+                    required property var modelData
+
+                    label: modelData.name
+                    selected: TaskbarStyle.logoMode === "logo" && TaskbarStyle.logoId === modelData.id
+                    onClicked: TaskbarStyle.setLogoId(modelData.id)
+
+                    ColouredIcon {
+                        anchors.centerIn: parent
+                        source: Paths.fileUrl(TaskbarStyle.logoFile(entry.modelData.id))
+                        implicitSize: 36
+                        colour: Colours.palette.m3tertiary
+                    }
                 }
             }
         }
@@ -223,6 +294,26 @@ PageBase {
         }
 
         Component {
+            id: catalogueDetected
+
+            ColouredIcon {
+                source: Paths.fileUrl(TaskbarStyle.logoFile(TaskbarStyle.detectedLogo))
+                implicitSize: 44
+                colour: Colours.palette.m3tertiary
+            }
+        }
+
+        Component {
+            id: catalogueLogo
+
+            ColouredIcon {
+                source: Paths.fileUrl(TaskbarStyle.logoFile(TaskbarStyle.logoId))
+                implicitSize: 44
+                colour: Colours.palette.m3tertiary
+            }
+        }
+
+        Component {
             id: glyphLogo
 
             MaterialIcon {
@@ -283,6 +374,9 @@ PageBase {
             anchors.horizontalCenter: parent.horizontalCenter
             anchors.bottom: parent.bottom
             anchors.bottomMargin: 8
+            width: parent.width - 12
+            horizontalAlignment: Text.AlignHCenter
+            elide: Text.ElideRight
             text: card.label
             font: Tokens.font.label.medium
             color: Colours.palette.m3onSurfaceVariant

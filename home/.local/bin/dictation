@@ -124,7 +124,12 @@ ensure_server() {
         local args=(-m "$MODEL" --host 127.0.0.1 --port "$PORT" -t "$THREADS" -l auto --suppress-nst)
         [[ $USE_GPU == 1 ]] || args+=(--no-gpu)
         systemctl --user reset-failed "$SERVER_UNIT" 2>/dev/null
+        # Сервер принимает звук и читает только модель: ему не нужны запись в систему и домашнюю папку,
+        # новые права, чужие сетевые семейства и пространства имён (проверено с Vulkan на видеокарте).
         systemd-run --user --quiet --collect --unit="$SERVER_UNIT" \
+            -p NoNewPrivileges=yes -p PrivateTmp=yes -p ProtectSystem=strict -p ProtectHome=read-only \
+            -p "RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX" -p ProtectKernelTunables=yes \
+            -p ProtectControlGroups=yes -p RestrictNamespaces=yes -p LockPersonality=yes \
             --description="Whisper server for Hyprstack dictation" \
             "$(command -v whisper-server)" "${args[@]}" 9>&- || log "systemd-run server failed"
         printf '%s' "$sig" >"$SERVER_SIG"
@@ -172,8 +177,9 @@ transcribe() {
         -F file=@"$WAV" -F response_format=json -F temperature=0 -F temperature_inc=0 \
         -F audio_ctx="$ctx" -F no_timestamps=true \
         -F language="$LANGUAGE" -F prompt="$prompt" 2>&1) || { log "curl: $response"; return 1; }
-    # Одна строка, без лишних пробелов по краям.
-    jq -r '.text // empty' <<<"$response" | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//'
+    # Одна строка, без лишних пробелов по краям и без управляющих символов (Esc, Enter, Ctrl-коды):
+    # распознанная речь печатается в окно с фокусом, и посторонний звук не должен нажимать клавиши.
+    jq -r '.text // empty' <<<"$response" | tr '\n' ' ' | tr -d '[:cntrl:]' | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//'
 }
 
 # ---------- вставка ----------

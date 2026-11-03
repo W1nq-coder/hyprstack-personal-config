@@ -46,9 +46,11 @@ Item {
             case "hyprstack":
                 return hyprstackLogo;
             case "distro":
-                return distroIcon;
+                return TaskbarStyle.detectedLogo !== "" ? detectedIcon : distroIcon;
             case "glyph":
                 return glyphLogo;
+            case "logo":
+                return TaskbarStyle.logoFile(TaskbarStyle.logoId) !== "" ? catalogueLogo : hyprstackLogo;
             case "image":
                 return TaskbarStyle.logoPath !== "" ? (TaskbarStyle.logoTint ? tintedImage : plainImage) : hyprstackLogo;
             default:
@@ -71,6 +73,27 @@ Item {
 
         ColouredIcon {
             source: SysInfo.osLogo
+            implicitSize: root.logoSize
+            colour: Colours.palette.m3tertiary
+        }
+    }
+
+    // One of the ready-made logos of distributions (Settings → Panels → Taskbar → Logo).
+    Component {
+        id: detectedIcon
+
+        ColouredIcon {
+            source: Paths.fileUrl(TaskbarStyle.logoFile(TaskbarStyle.detectedLogo))
+            implicitSize: root.logoSize
+            colour: Colours.palette.m3tertiary
+        }
+    }
+
+    Component {
+        id: catalogueLogo
+
+        ColouredIcon {
+            source: Paths.fileUrl(TaskbarStyle.logoFile(TaskbarStyle.logoId))
             implicitSize: root.logoSize
             colour: Colours.palette.m3tertiary
         }
@@ -155,7 +178,7 @@ Item {
                 MenuButton {
                     icon: "dock_to_bottom"
                     text: root.l("Customize taskbar", "Настроить панель задач")
-                    onClicked: TaskbarStyle.openSettings(12)
+                    onClicked: TaskbarStyle.startEditing()
                 }
 
                 MenuButton {

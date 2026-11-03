@@ -83,8 +83,8 @@ StyledRect {
             SplitButton {
                 disabled: Recorder.busy
 
-                active: menuItems.find(m => root.props.recordingMode === m.icon + m.text) ?? menuItems[0]
-                menu.onItemSelected: item => root.props.recordingMode = item.icon + item.text
+                active: menuItems.find(m => Recorder.recordingMode === m.icon + m.text) ?? menuItems[0]
+                menu.onItemSelected: item => Recorder.setRecordingMode(item.icon + item.text)
 
                 // Personal overlay: fullscreen only (no region modes), with a choice of
                 // audio: none, system sound + microphone, system sound only, microphone only.

@@ -12,6 +12,35 @@ import qs.utils
 StyledRect {
     id: root
 
+    // Personal overlay (security): text from other programs (notification bodies, device and track
+    // names, VPN names) may contain <img src="http://…"> or ![](http://…): Qt would fetch that address
+    // when showing it, so anyone who can send you a message could make this computer open a connection.
+    // Only plain simple tags stay; everything else is shown as text.
+    function safeMarkup(text: var): string {
+        const keep = [];
+        const hold = tag => "\u0001" + (keep.push(tag) - 1) + "\u0002";
+        let s = String(text ?? "").replace(/[\u0001\u0002]/g, "");
+        s = s.replace(/<(\/?)(b|i|u|s|br|p)\s*\/?>/gi, (m, c, t) => hold("<" + c + t.toLowerCase() + ">"));
+        s = s.replace(/<a\s+href\s*=\s*(["'])(https?:\/\/[^"'<>\s]*)\1\s*>/gi, (m, q, url) => hold('<a href="' + url + '">'));
+        s = s.replace(/<\/a\s*>/gi, () => hold("</a>"));
+        s = s.replace(/&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-f]+);)/gi, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        return s.replace(/\u0001(\d+)\u0002/g, (m, i) => keep[Number(i)]);
+    }
+
+    function safeMarkdown(text: var): string {
+        return String(text ?? "").replace(/!\[[^\]]*\]\([^)]*\)/g, "").replace(/!\[[^\]]*\]\[[^\]]*\]/g, "");
+    }
+
+    function safeLink(link: string): bool {
+        return /^(https?:|mailto:)/i.test(link);
+    }
+
+    // Notification pictures: only local files and the shell's own image providers, never http(s) addresses.
+    function safeImage(value: var): string {
+        const v = String(value ?? "");
+        return v.startsWith("/") || v.startsWith("file:") || v.startsWith("image:") ? Paths.fileUrl(v) : "";
+    }
+
     required property NotifData modelData
     required property Props props
     required property bool expanded
@@ -88,7 +117,7 @@ StyledRect {
 
             Layout.fillWidth: true
             visible: text.length > 0
-            text: root.modelData?.body ?? ""
+            text: root.safeMarkup(root.modelData?.body)
             textFormat: Text.RichText
             color: Colours.palette.m3onSurfaceVariant
             font: Tokens.font.body.small
@@ -96,7 +125,8 @@ StyledRect {
             maximumLineCount: root.expanded ? Number.MAX_SAFE_INTEGER : 2
             elide: Text.ElideRight
             onLinkActivated: link => {
-                Qt.openUrlExternally(link);
+                if (root.safeLink(link))
+                    Qt.openUrlExternally(link);
                 root.screenState.sidebar = false;
             }
         }
@@ -116,7 +146,7 @@ StyledRect {
                 objectName: "notificationScreenshot_" + (root.modelData?.historyId ?? "")
                 anchors.fill: parent
                 anchors.margins: 2 * Tokens.scale
-                source: Paths.fileUrl(root.modelData?.image ?? "")
+                source: root.safeImage(root.modelData?.image)
                 fillMode: Image.PreserveAspectFit
                 asynchronous: true
                 sourceSize.width: 800

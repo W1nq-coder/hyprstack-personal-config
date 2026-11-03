@@ -21,26 +21,23 @@ Variants {
 
         required property ShellScreen modelData
 
-        readonly property string edge: ({
-                bottom: "top",
-                top: "bottom",
-                left: "right",
-                right: "left"
-            })[TaskbarStyle.stackingEdge] ?? "top"
+        // Any edge (Settings → Panels → Taskbar → Appearance); "auto" = opposite to the bar.
+        readonly property string edge: TaskbarStyle.dockActualEdge
         readonly property bool vertical: edge === "left" || edge === "right"
-        readonly property real gap: 10 * Tokens.scale     // space between the dock and the screen edge
+        readonly property string align: TaskbarStyle.dockAlign
+        readonly property real gap: TaskbarStyle.dockGap * Tokens.scale     // space between the dock and the screen edge
 
         screen: modelData
         name: "dock"
         visible: Hypr.stacking && TaskbarStyle.dock && icons.groups.length > 0
-        // Anchored to one edge only: the compositor centres the dock along it.
-        anchors.top: edge === "top"
-        anchors.bottom: edge === "bottom"
-        anchors.left: edge === "left"
-        anchors.right: edge === "right"
+        // Anchored to one edge (centred along it) or to a corner of it (start / end).
+        anchors.top: edge === "top" || (vertical && align === "start")
+        anchors.bottom: edge === "bottom" || (vertical && align === "end")
+        anchors.left: edge === "left" || (!vertical && align === "start")
+        anchors.right: edge === "right" || (!vertical && align === "end")
         exclusionMode: ExclusionMode.Auto
-        implicitWidth: panel.implicitWidth + (vertical ? gap * 2 : 0)
-        implicitHeight: panel.implicitHeight + (vertical ? 0 : gap * 2)
+        implicitWidth: panel.implicitWidth + gap * 2
+        implicitHeight: panel.implicitHeight + gap * 2
         // Only the dock itself takes the mouse, the margin around it stays click-through.
         mask: Region {
             item: panel
@@ -52,8 +49,8 @@ Variants {
             anchors.centerIn: parent
             implicitWidth: icons.implicitWidth + Tokens.padding.small * 2
             implicitHeight: icons.implicitHeight + Tokens.padding.small * 2
-            radius: Tokens.rounding.large
-            color: Colours.tPalette.m3surfaceContainer
+            radius: TaskbarStyle.dockRadius * Tokens.scale
+            color: TaskbarStyle.tone(Colours.tPalette.m3surfaceContainer, TaskbarStyle.dockDim, TaskbarStyle.dockOpacity)
             border.width: 1
             border.color: Qt.alpha(Colours.palette.m3outline, 0.35)
 

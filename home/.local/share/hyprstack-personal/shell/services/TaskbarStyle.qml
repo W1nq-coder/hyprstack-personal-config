@@ -12,13 +12,14 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Hyprstack.Config
+import Hyprstack.I18n
 
 Singleton {
     id: root
 
     readonly property var views: ["labels", "icons", "dock"]
     readonly property var edges: ["bottom", "top", "left", "right"]
-    readonly property var logoModes: ["default", "hyprstack", "distro", "glyph", "image"]
+    readonly property var logoModes: ["default", "hyprstack", "distro", "glyph", "image", "logo"]
 
     // Built-in logo pictures (Material symbols, they follow the theme colours).
     readonly property var glyphs: ["apps", "grid_view", "dashboard", "widgets", "rocket_launch", "bolt", "star", "favorite", "terminal", "home", "deployed_code", "hexagon", "token", "diamond", "circle", "flare", "pets", "eco", "public", "code", "sports_esports", "music_note", "bug_report", "psychiatry"]
@@ -28,10 +29,209 @@ Singleton {
     property string logoMode: "default"
     property string logoGlyph: "apps"
     property string logoPath: ""
+    property string logoId: ""             // a logo from the built-in catalogue (assets/distro-logos)
     property bool logoTint: false          // recolour a custom picture with the theme colour
     property var layout: null              // array of element ids, see the editor
 
     readonly property bool dock: view === "dock"
+
+    // ---- catalogue of logos (assets/distro-logos/index.json: [{id, name}]) ----
+    property var catalogue: []
+    readonly property string logoDir: Quickshell.shellDir + "/assets/distro-logos"
+
+    // The distribution of this computer (ID of /etc/os-release) as a logo of the catalogue, or "".
+    property string osId: ""
+    readonly property string detectedLogo: {
+        const alias = ({arch: "archlinux", opensuse: "opensuse", "opensuse-leap": "opensuse-leap", "opensuse-tumbleweed": "opensuse-tumbleweed", pop: "pop-os", popos: "pop-os", endeavouros: "endeavour", rocky: "rocky-linux", almalinux: "almalinux", kali: "kali-linux", mint: "linuxmint", rhel: "redhat", alpine: "alpine"});
+        const id = alias[osId] ?? osId;
+        return logoKnown(id) ? id : "";
+    }
+
+    FileView {
+        path: "/etc/os-release"
+        printErrors: false
+        onLoaded: {
+            const m = text().match(/^ID=("?)([A-Za-z0-9._-]+)\1\s*$/m);
+            root.osId = m ? m[2].toLowerCase() : "";
+        }
+    }
+
+    function logoKnown(id: var): bool {
+        return typeof id === "string" && /^[a-z0-9-]+$/.test(id) && catalogue.some(e => e.id === id);
+    }
+
+    function logoFile(id: string): string {
+        return logoKnown(id) ? logoDir + "/" + id + ".svg" : "";
+    }
+
+    function setLogoId(id: string): void {
+        if (!logoKnown(id))
+            return;
+        logoMode = "logo";
+        logoId = id;
+        saveTimer.restart();
+    }
+
+    FileView {
+        path: root.logoDir + "/index.json"
+        printErrors: false
+        onLoaded: {
+            try {
+                const list = JSON.parse(text());
+                root.catalogue = Array.isArray(list) ? list.filter(e => e && typeof e.id === "string" && typeof e.name === "string" && /^[a-z0-9-]+$/.test(e.id)) : [];
+            } catch (err) {
+                root.catalogue = [];
+            }
+        }
+    }
+
+    // ---- appearance (Settings → Panels → Taskbar → Appearance) ----
+    // Sizes and opacity are percentages, the corner radius and the gap are pixels.
+    readonly property var dockEdges: ["auto", "bottom", "top", "left", "right"]
+    readonly property var dockAligns: ["center", "start", "end"]
+    property string dockEdge: "auto"         // "auto" = the edge opposite to the bar
+    property string dockAlign: "center"      // along the edge: centre, start (left/top) or end
+    property int dockRadius: 16
+    property int dockScale: 100
+    property int dockOpacity: 100
+    property int dockDim: 0                  // 0..80: how much the background is darkened
+    property int dockGap: 10
+    property int barScale: 100
+    property int barOpacity: 100
+    property int barDim: 0
+
+    readonly property string dockActualEdge: dockEdge !== "auto" ? dockEdge : ({
+            bottom: "top",
+            top: "bottom",
+            left: "right",
+            right: "left"
+        })[stackingEdge] ?? "top"
+
+    // A theme colour darkened by `dim` percent and made `opacity` percent as opaque.
+    function tone(c: color, dim: int, opacity: int): color {
+        const k = 1 - dim / 100;
+        return Qt.rgba(c.r * k, c.g * k, c.b * k, c.a * opacity / 100);
+    }
+
+    readonly property var limits: ({
+            dockRadius: [0, 48],
+            dockScale: [60, 180],
+            dockOpacity: [10, 100],
+            dockDim: [0, 80],
+            dockGap: [0, 60],
+            barScale: [70, 180],
+            barOpacity: [10, 100],
+            barDim: [0, 80]
+        })
+
+    function setAppearance(key: string, value: var): void {
+        if (key === "dockEdge") {
+            if (!dockEdges.includes(value))
+                return;
+            dockEdge = value;
+        } else if (key === "dockAlign") {
+            if (!dockAligns.includes(value))
+                return;
+            dockAlign = value;
+        } else if (limits[key] !== undefined) {
+            root[key] = clampInt(value, limits[key][0], limits[key][1], root[key]);
+        } else {
+            return;
+        }
+        saveTimer.restart();
+    }
+
+    function resetAppearance(): void {
+        dockEdge = "auto";
+        dockAlign = "center";
+        dockRadius = 16;
+        dockScale = 100;
+        dockOpacity = 100;
+        dockDim = 0;
+        dockGap = 10;
+        barScale = 100;
+        barOpacity = 100;
+        barDim = 0;
+        saveTimer.restart();
+    }
+
+    function clampInt(v: var, lo: int, hi: int, fallback: int): int {
+        const n = Math.round(Number(v));
+        return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : fallback;
+    }
+
+    // ---- editing the bar in place (right click on the bar -> "Customize taskbar") ----
+    property bool editing: false
+    readonly property bool ru: String(Tr.language || Qt.locale().name).startsWith("ru")
+
+    function l(en: string, rus: string): string {
+        return ru ? rus : en;
+    }
+
+    function label(id: string): string {
+        return ({
+                logo: l("Logo", "Логотип"),
+                tasks: l("Windows", "Окна"),
+                tray: l("Tray", "Трей"),
+                clock: l("Clock", "Часы"),
+                statusIcons: l("Status icons", "Значки состояния"),
+                vpn: "VPN",
+                notifications: l("Notifications", "Уведомления"),
+                power: l("Power", "Питание")
+            })[id] ?? id;
+    }
+
+    function iconOf(id: string): string {
+        return ({
+                logo: "image",
+                tasks: "web_asset",
+                tray: "widgets",
+                clock: "schedule",
+                statusIcons: "signal_cellular_alt",
+                vpn: "vpn_key",
+                notifications: "notifications",
+                power: "power_settings_new"
+            })[id] ?? "circle";
+    }
+
+    function startEditing(): void {
+        editing = true;
+    }
+
+    function stopEditing(): void {
+        editing = false;
+    }
+
+    // Put element `id` into `zone` ("left" | "center" | "right") in front of `beforeId`
+    // (null = at the end); zone "hidden" takes it off the bar.
+    function moveElement(id: string, zone: string, beforeId: var): void {
+        if (!catalog.includes(id))
+            return;
+        const z = {
+            left: [...zones.left],
+            center: [...zones.center],
+            right: [...zones.right]
+        };
+        for (const name of ["left", "center", "right"])
+            z[name] = z[name].filter(x => x !== id);
+        if (zone !== "hidden" && z[zone]) {
+            const i = beforeId ? z[zone].indexOf(beforeId) : -1;
+            if (i < 0)
+                z[zone].push(id);
+            else
+                z[zone].splice(i, 0, id);
+        }
+        setZones(z);
+    }
+
+    Connections {
+        target: Hypr
+
+        function onStackingChanged(): void {
+            if (!Hypr.stacking)
+                root.editing = false;
+        }
+    }
 
     // ---- layout of the bar elements in the floating layout ----
     // Elements the editor can place; everything not placed is hidden. "tasks" is the list of open windows.
@@ -119,6 +319,7 @@ Singleton {
     function resetLogo(): void {
         logoMode = "default";
         logoPath = "";
+        logoId = "";
         logoTint = false;
         saveTimer.restart();
     }
@@ -148,8 +349,14 @@ Singleton {
         const logo = (data.logo !== null && typeof data.logo === "object") ? data.logo : {};
         root.logoMode = logoModes.includes(logo.mode) ? logo.mode : "default";
         root.logoGlyph = glyphs.includes(logo.glyph) ? logo.glyph : "apps";
+        root.logoId = typeof logo.id === "string" && /^[a-z0-9-]+$/.test(logo.id) ? logo.id : "";
         root.logoPath = (typeof logo.path === "string" && logo.path.startsWith("/")) ? logo.path : "";
         root.logoTint = logo.tint === true;
+        const look = (data.appearance !== null && typeof data.appearance === "object") ? data.appearance : {};
+        root.dockEdge = dockEdges.includes(look.dockEdge) ? look.dockEdge : "auto";
+        root.dockAlign = dockAligns.includes(look.dockAlign) ? look.dockAlign : "center";
+        for (const key of Object.keys(limits))
+            root[key] = clampInt(look[key], limits[key][0], limits[key][1], key === "dockRadius" ? 16 : key === "dockGap" ? 10 : (key.endsWith("Scale") || key.endsWith("Opacity")) ? 100 : 0);
         root.layout = Array.isArray(data.layout) && data.layout.every(id => typeof id === "string") ? data.layout : null;
     }
 
@@ -164,7 +371,20 @@ Singleton {
                 mode: root.logoMode,
                 glyph: root.logoGlyph,
                 path: root.logoPath,
+                id: root.logoId,
                 tint: root.logoTint
+            },
+            appearance: {
+                dockEdge: root.dockEdge,
+                dockAlign: root.dockAlign,
+                dockRadius: root.dockRadius,
+                dockScale: root.dockScale,
+                dockOpacity: root.dockOpacity,
+                dockDim: root.dockDim,
+                dockGap: root.dockGap,
+                barScale: root.barScale,
+                barOpacity: root.barOpacity,
+                barDim: root.barDim
             },
             layout: root.layout
         }, null, 4) + "\n")

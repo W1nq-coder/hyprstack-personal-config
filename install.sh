@@ -194,6 +194,15 @@ for script in dictation nightlight hyprstack-personal-update hyprstack-personal-
     [[ -f $HOME/.local/bin/$script ]] && do_ chmod +x "$HOME/.local/bin/$script"
 done
 
+# Закрытые права: здесь история уведомлений (чужие сообщения), настройки и состояние. Если домашняя
+# папка открыта другим пользователям компьютера, они не должны это читать.
+for d in "$HOME/.config/hyprstack" "${XDG_STATE_HOME:-$HOME/.local/state}/hyprstack" \
+    "${XDG_STATE_HOME:-$HOME/.local/state}/hyprstack-personal" "${XDG_CACHE_HOME:-$HOME/.cache}/hyprstack"; do
+    [[ -d $d ]] && do_ chmod 700 "$d"
+done
+notifs=${XDG_STATE_HOME:-$HOME/.local/state}/hyprstack/notifs.json
+[[ -f $notifs ]] && do_ chmod 600 "$notifs"
+
 # Настройки оболочки, которые живут в общем shell.json: кнопка ночного режима
 # в быстрых переключателях, Dolphin для кнопки «Папка» у записей экрана, список
 # приложений и дашборд только по сочетанию клавиш (не выскакивают от мыши у края),
@@ -237,9 +246,16 @@ else
         read -r -p "  Скачать сейчас? [y/N] " answer
         if [[ $answer == [yYдД]* ]]; then
             mkdir -p "$(dirname "$model")"
-            curl -L --fail -o "$model.part" \
-                https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin \
-                && mv "$model.part" "$model"
+            # Контрольная сумма из Hugging Face (LFS oid файла): подменённая или битая модель не ставится.
+            model_sha=394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2
+            if curl -L --fail --proto '=https' --proto-redir '=https' -o "$model.part" \
+                https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin &&
+                [[ $(sha256sum < "$model.part" | cut -d' ' -f1) == "$model_sha" ]]; then
+                mv "$model.part" "$model"
+            else
+                rm -f "$model.part"
+                warn "Модель не скачана или её контрольная сумма не совпала: файл удалён"
+            fi
         fi
     fi
 fi

@@ -85,9 +85,16 @@ main() {
     # Если окно закроют посреди обновления, установка всё равно доходит до конца: после git pull
     # новых коммитов уже нет, и оборванную установку никто не повторил бы.
     trap '' HUP
-    printf '  %s▶ git pull%s\n' "$B" "$R"
-    if ! git -C "$REPO" pull --ff-only; then
-        printf '\n  %sgit pull не удался.%s Нажмите любую клавишу...' "$ERR" "$R"; read -r -s -n1; return 1
+    # Ставим именно тот коммит, который показан выше и проверен: не «что на GitHub сейчас»
+    # (git pull скачал бы заново и мог получить уже другой код).
+    if [[ -f $REPO/allowed_signers ]] && ! git -C "$REPO" -c gpg.format=ssh -c gpg.ssh.allowedSignersFile="$REPO/allowed_signers" \
+        verify-commit "$remote" >/dev/null 2>&1; then
+        printf '  %sОбновление не выполнено:%s коммит %s не подписан доверенным ключом.\n\n  Нажмите любую клавишу...' "$ERR" "$R" "$remote"
+        read -r -s -n1; return 1
+    fi
+    printf '  %s▶ git merge --ff-only %s%s\n' "$B" "${remote:0:12}" "$R"
+    if ! git -C "$REPO" merge --ff-only "$remote"; then
+        printf '\n  %sОбновление не удалось.%s Нажмите любую клавишу...' "$ERR" "$R"; read -r -s -n1; return 1
     fi
     local args=(--no-wallpapers)   # коллекция обоев (~2 ГБ) при обновлении не качается
     [[ -f $STATE/personal ]] && args+=(--personal)

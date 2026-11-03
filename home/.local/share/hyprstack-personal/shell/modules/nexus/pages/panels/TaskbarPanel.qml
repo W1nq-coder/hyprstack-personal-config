@@ -125,6 +125,38 @@ PageBase {
             }
         }
 
+        Variants {
+            id: dockEdgeItems
+
+            model: TaskbarStyle.dockEdges
+
+            MenuItem {
+                required property string modelData
+                readonly property string key: modelData
+
+                icon: modelData === "auto" ? "swap_vert" : root.edgeIcons[modelData]
+                text: modelData === "auto" ? root.l("Opposite to the bar", "Напротив панели") : root.edgeNames[modelData]
+            }
+        }
+
+        Variants {
+            id: dockAlignItems
+
+            model: TaskbarStyle.dockAligns
+
+            MenuItem {
+                required property string modelData
+                readonly property string key: modelData
+
+                icon: ({center: "align_horizontal_center", start: "align_horizontal_left", end: "align_horizontal_right"})[modelData]
+                text: ({
+                        center: root.l("Centre", "По центру"),
+                        start: root.l("Start (left / top)", "В начале (слева / сверху)"),
+                        end: root.l("End (right / bottom)", "В конце (справа / снизу)")
+                    })[modelData]
+            }
+        }
+
         // Behaviour
         SectionHeader {
             first: true
@@ -195,6 +227,114 @@ PageBase {
             onSelected: item => TaskbarStyle.setView(item.key)
         }
 
+        // Appearance of the bar and the dock (floating windows mode)
+        SectionHeader { text: root.l("Appearance (floating windows mode)", "Внешний вид (режим «как в Windows»)") }
+
+        SelectRow {
+            first: true
+            label: root.l("Dock edge", "Сторона дока")
+            subtext: root.l("Where the dock stands. Used with the dock view of the taskbar", "Где стоит док. Работает с видом панели «Док»")
+            menuItems: dockEdgeItems.instances
+            active: dockEdgeItems.instances.find(i => i.key === TaskbarStyle.dockEdge) ?? null
+            fallbackIcon: "swap_vert"
+            fallbackText: ""
+            onSelected: item => TaskbarStyle.setAppearance("dockEdge", item.key)
+        }
+
+        SelectRow {
+            label: root.l("Dock alignment", "Выравнивание дока")
+            subtext: root.l("Along its edge: in the centre or at one end", "Вдоль стороны: по центру или у края")
+            menuItems: dockAlignItems.instances
+            active: dockAlignItems.instances.find(i => i.key === TaskbarStyle.dockAlign) ?? null
+            fallbackIcon: "align_horizontal_center"
+            fallbackText: ""
+            onSelected: item => TaskbarStyle.setAppearance("dockAlign", item.key)
+        }
+
+        StepperRow {
+            label: root.l("Dock corner radius, px", "Скругление дока, px")
+            subtext: root.l("0 gives square corners", "0 даёт прямые углы")
+            value: TaskbarStyle.dockRadius
+            from: 0
+            to: 48
+            stepSize: 2
+            onMoved: v => TaskbarStyle.setAppearance("dockRadius", v)
+        }
+
+        StepperRow {
+            label: root.l("Dock size, %", "Размер дока, %")
+            subtext: root.l("Size of the dock and its icons", "Размер дока и его значков")
+            value: TaskbarStyle.dockScale
+            from: 60
+            to: 180
+            stepSize: 10
+            onMoved: v => TaskbarStyle.setAppearance("dockScale", v)
+        }
+
+        StepperRow {
+            label: root.l("Dock gap from the edge, px", "Отступ дока от края, px")
+            value: TaskbarStyle.dockGap
+            from: 0
+            to: 60
+            stepSize: 2
+            onMoved: v => TaskbarStyle.setAppearance("dockGap", v)
+        }
+
+        StepperRow {
+            label: root.l("Dock opacity, %", "Непрозрачность дока, %")
+            value: TaskbarStyle.dockOpacity
+            from: 10
+            to: 100
+            stepSize: 5
+            onMoved: v => TaskbarStyle.setAppearance("dockOpacity", v)
+        }
+
+        StepperRow {
+            label: root.l("Dock darkening, %", "Затемнение дока, %")
+            subtext: root.l("Makes the dock background darker", "Делает фон дока темнее")
+            value: TaskbarStyle.dockDim
+            from: 0
+            to: 80
+            stepSize: 5
+            onMoved: v => TaskbarStyle.setAppearance("dockDim", v)
+        }
+
+        StepperRow {
+            label: root.l("Taskbar size, %", "Размер панели, %")
+            subtext: root.l("Thickness of the taskbar and size of its icons", "Толщина панели и размер её значков")
+            value: TaskbarStyle.barScale
+            from: 70
+            to: 180
+            stepSize: 10
+            onMoved: v => TaskbarStyle.setAppearance("barScale", v)
+        }
+
+        StepperRow {
+            label: root.l("Taskbar opacity, %", "Непрозрачность панели, %")
+            value: TaskbarStyle.barOpacity
+            from: 10
+            to: 100
+            stepSize: 5
+            onMoved: v => TaskbarStyle.setAppearance("barOpacity", v)
+        }
+
+        StepperRow {
+            last: true
+            label: root.l("Taskbar darkening, %", "Затемнение панели, %")
+            subtext: root.l("Makes the taskbar background darker", "Делает фон панели темнее")
+            value: TaskbarStyle.barDim
+            from: 0
+            to: 80
+            stepSize: 5
+            onMoved: v => TaskbarStyle.setAppearance("barDim", v)
+        }
+
+        NavRow {
+            icon: "restart_alt"
+            text: root.l("Reset appearance", "Сбросить внешний вид")
+            onClicked: TaskbarStyle.resetAppearance()
+        }
+
         // Components
         SectionHeader { text: Tr.tr("Element visibility") }
 
@@ -249,7 +389,7 @@ PageBase {
             icon: "dock_to_bottom"
             text: root.l("Customize taskbar", "Настроить панель задач")
             subtext: root.l("Drag elements between the left, centre and right zones or hide them", "Перетаскивайте элементы между зонами слева, по центру и справа или скрывайте их")
-            onClicked: root.nState.openSubPage(12)
+            onClicked: TaskbarStyle.startEditing()
         }
 
         NavRow {

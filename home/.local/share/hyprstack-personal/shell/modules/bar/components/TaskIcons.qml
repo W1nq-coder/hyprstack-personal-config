@@ -28,8 +28,9 @@ StyledClippingRect {
     property real maxLength: 100000
     readonly property bool vertical: edge === "left" || edge === "right"
 
-    readonly property real across: (dock ? 52 : 40) * Tokens.scale
-    readonly property real iconSize: (dock ? 34 : 22) * Tokens.scale
+    readonly property real look: (dock ? TaskbarStyle.dockScale : TaskbarStyle.barScale) / 100
+    readonly property real across: (dock ? 52 : 40) * Tokens.scale * look
+    readonly property real iconSize: (dock ? 34 : 22) * Tokens.scale * look
     readonly property real inset: Tokens.padding.extraSmall
     readonly property var appEntries: DesktopEntries.applications.values
     property Item menuTask: null

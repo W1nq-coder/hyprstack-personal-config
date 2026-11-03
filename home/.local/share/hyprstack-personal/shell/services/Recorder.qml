@@ -18,6 +18,17 @@ Singleton {
     property list<string> startArgs
     property string lastError: ""
     property string commandError: ""
+    // Personal overlay: the chosen recording mode (menu item key) is remembered between sessions
+    // in ~/.config/hyprstack/recorder.json.
+    property string recordingMode: ""
+
+    function setRecordingMode(value: string): void {
+        if (value === recordingMode)
+            return;
+        recordingMode = value;
+        modeSave.restart();
+    }
+
     property var queriedState: ({running: false, paused: false, elapsed: 0, state: "idle"})
 
     function refresh(): void {
@@ -140,6 +151,27 @@ Singleton {
                 root.lastError = root.commandError;
             root.cancelRequested = false;
             root.refresh();
+        }
+    }
+
+    Timer {
+        id: modeSave
+
+        interval: 300
+        onTriggered: modeFile.setText(JSON.stringify({recordingMode: root.recordingMode}, null, 4) + "\n")
+    }
+
+    FileView {
+        id: modeFile
+
+        path: (Quickshell.env("XDG_CONFIG_HOME") || Quickshell.env("HOME") + "/.config") + "/hyprstack/recorder.json"
+        printErrors: false
+        onLoaded: {
+            try {
+                const data = JSON.parse(text());
+                if (data !== null && typeof data.recordingMode === "string")
+                    root.recordingMode = data.recordingMode;
+            } catch (err) {} // damaged file: keep the default
         }
     }
 

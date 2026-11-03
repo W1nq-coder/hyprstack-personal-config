@@ -58,6 +58,18 @@ if ! git -C "$REPO" merge-base --is-ancestor "$local_" "$remote"; then
     exit 0
 fi
 
+# Подпись: если в репозитории лежит allowed_signers (открытые SSH-ключи автора), предлагаем только
+# коммиты, подписанные одним из них. Список берётся из уже установленной (доверенной) копии, а не из
+# скачанной: подменить его вместе с кодом нельзя. Без этого файла проверка отключена.
+if [[ -f $REPO/allowed_signers ]] && ! git -C "$REPO" -c gpg.format=ssh -c gpg.ssh.allowedSignersFile="$REPO/allowed_signers" \
+    verify-commit "$remote" >/dev/null 2>&1; then
+    if [[ $(cat "$STATE/unsigned" 2>/dev/null) != "$remote" ]] && wait_for_notifier; then
+        note -u critical "Обновление HyperStack не установлено" "Последний коммит на GitHub не подписан доверенным ключом. Если вы его не делали, ничего не нажимайте и проверьте аккаунт GitHub."
+        echo "$remote" > "$STATE/unsigned"
+    fi
+    exit 0
+fi
+
 # Уже отказались от именно этой версии — не напоминаем.
 [[ $(cat "$STATE/dismissed" 2>/dev/null) == "$remote" ]] && exit 0
 # Не отвечали — переспрашиваем не чаще раза в 3 часа.

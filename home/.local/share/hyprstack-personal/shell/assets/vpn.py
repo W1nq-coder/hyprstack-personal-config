@@ -132,9 +132,25 @@ def required(value):
 HEADERS = {}
 
 
+class SafeRedirects(urllib.request.HTTPRedirectHandler):
+    """Follow redirects only to https (or to http when the first link was http itself)."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        origin = urllib.parse.urlsplit(req.full_url).scheme
+        target = urllib.parse.urlsplit(newurl).scheme
+        if target != 'https' and not (target == 'http' and origin == 'http'):
+            raise VpnError('The server redirected the download to an unsafe address')
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+OPENER = urllib.request.build_opener(SafeRedirects())
+
+
 def download(url, limit=MAX_IMPORT, agent='Hyprstack-VPN/1'):
+    if urllib.parse.urlsplit(url).scheme not in ('https', 'http'):
+        raise VpnError('Only https:// and http:// addresses can be downloaded')
     request = urllib.request.Request(url, headers={'User-Agent': agent, 'Accept': '*/*'})
-    with urllib.request.urlopen(request, timeout=30) as response:
+    with OPENER.open(request, timeout=30) as response:
         HEADERS.clear()
         HEADERS.update({k.lower(): v for k, v in response.headers.items()})
         content = response.read(limit + 1)
@@ -415,8 +431,32 @@ def validate(profile):
             raise VpnError('The profile configuration is invalid or unsupported')
 
 
-def valid_entries(entries):
+# What a subscription (a stranger's server list) may contain. Anything else, such as outbounds
+# that send traffic around the tunnel ("direct", "block", "freedom") or Shadowsocks plugins that
+# start other programs, is dropped; you can still paste such a profile yourself.
+REMOTE_TYPES = {'vless', 'vmess', 'trojan', 'shadowsocks', 'hysteria', 'hysteria2', 'tuic', 'socks', 'http', 'wireguard'}
+REMOTE_FORBIDDEN_KEYS = {'plugin', 'plugin_opts', 'plugin-opts'}
+
+
+def remote_safe(entry):
+    outbound = entry.get('outbound', {})
+    kind = outbound.get('protocol') if entry.get('engine') == 'xray' else outbound.get('type')
+    if kind not in REMOTE_TYPES:
+        return False
+
+    def clean(node):
+        if isinstance(node, dict):
+            return not (REMOTE_FORBIDDEN_KEYS & set(node)) and all(clean(v) for v in node.values())
+        if isinstance(node, list):
+            return all(clean(v) for v in node)
+        return True
+    return clean(outbound)
+
+
+def valid_entries(entries, remote=False):
     """Servers the core accepts; the others are skipped instead of failing all."""
+    if remote:
+        entries = [e for e in entries if remote_safe(e)]
     if entries:
         install(entries[0]['engine'])
     good = []
@@ -673,20 +713,28 @@ def authorize(value):
         install(engine)
     sources = [binary(e) for e in engines]
     digests = [hashlib.sha256(p.read_bytes()).digest() for p in sources]
-    args = [item for engine, source in zip(engines, sources) for item in (str(source), str(PRIVILEGED / engine))]
-    with tempfile.TemporaryDirectory(prefix='.authorize-', dir=ROOT) as temporary:
-        policy = Path(temporary) / 'dns.rules'
-        policy.write_text(dns_policy())
-        try:
-            subprocess.run(['pkexec', '/bin/sh', '-c',
-                            'set -eu\nvpn_gid="$1"\n/usr/bin/install -D -o root -g root -m 644 "$2" "$3"\n'
-                            'shift 3\nwhile [ "$#" -gt 0 ]; do\n'
-                            '/usr/bin/install -D -o root -g "$vpn_gid" -m 750 "$1" "$2"\n'
-                            '/usr/bin/setcap cap_net_admin,cap_net_raw,cap_net_bind_service=ep "$2"\nshift 2\ndone',
-                            'hyprstack-vpn-install', str(os.getgid()), str(policy), str(DNS_RULE), *args], check=True, timeout=180,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except subprocess.CalledProcessError as error:
-            raise VpnError('VPN tunnel authorization failed or was cancelled') from error
+    args = [item for engine, source, digest in zip(engines, sources, digests)
+            for item in (str(source), str(PRIVILEGED / engine), digest.hex())]
+    # The commands run as root, so nothing they install may be read from a place the user (or a
+    # program running as the user) can change while the password prompt is open: the polkit rule is
+    # passed as text, each binary is copied once into a root-owned folder and its SHA-256 is checked
+    # there against the digest taken before, and only that checked copy is installed.
+    try:
+        subprocess.run(['pkexec', '/bin/sh', '-c',
+                        'set -eu\numask 077\nvpn_gid="$1"\npolicy="$2"\nrule="$3"\nshift 3\n'
+                        'work=$(/usr/bin/mktemp -d)\ntrap \'rm -rf "$work"\' EXIT\n'
+                        'printf %s "$policy" > "$work/dns.rules"\n'
+                        '/usr/bin/install -D -o root -g root -m 644 "$work/dns.rules" "$rule"\n'
+                        'while [ "$#" -gt 0 ]; do\n'
+                        '/usr/bin/cp -- "$1" "$work/core"\n'
+                        'have=$(/usr/bin/sha256sum "$work/core" | /usr/bin/cut -d" " -f1)\n'
+                        '[ "$have" = "$3" ] || exit 1\n'
+                        '/usr/bin/install -D -o root -g "$vpn_gid" -m 750 "$work/core" "$2"\n'
+                        '/usr/bin/setcap cap_net_admin,cap_net_raw,cap_net_bind_service=ep "$2"\nshift 3\ndone',
+                        'hyprstack-vpn-install', str(os.getgid()), dns_policy(), str(DNS_RULE), *args], check=True, timeout=180,
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except subprocess.CalledProcessError as error:
+        raise VpnError('VPN tunnel authorization failed or was cancelled') from error
     for engine, source, digest in zip(engines, sources, digests):
         target = PRIVILEGED / engine
         if hashlib.sha256(target.read_bytes()).digest() != digest or not can_tun(target):
@@ -793,7 +841,7 @@ def dispatch(action, payload):
                     entries = fetch_profiles(text)
                 else:
                     entries = parse(text)
-                entries = valid_entries(entries)
+                entries = valid_entries(entries, remote=subscription)
                 group = {'id': secrets.token_hex(6), 'name': str(payload.get('name', '')).strip() or (subscription_title(text) if subscription else 'Imported'),
                          'subscription': subscription, 'excluded': []}
                 if subscription:
@@ -803,7 +851,7 @@ def dispatch(action, payload):
             elif action == 'update':
                 for group in value['groups']:
                     if group['subscription'] and payload.get('id') in (None, '', group['id']):
-                        entries = valid_entries(fetch_profiles(group['url']))
+                        entries = valid_entries(fetch_profiles(group['url']), remote=True)
                         add_profiles(value, group, entries)
             elif action == 'select':
                 value['selectedProfile'] = payload['id']
