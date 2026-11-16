@@ -93,8 +93,15 @@ main() {
         read -r -s -n1; return 1
     fi
     printf '  %s▶ git merge --ff-only %s%s\n' "$B" "${remote:0:12}" "$R"
-    if ! git -C "$REPO" merge --ff-only "$remote"; then
-        printf '\n  %sОбновление не удалось.%s Нажмите любую клавишу...' "$ERR" "$R"; read -r -s -n1; return 1
+    # Сохраняем также ошибки Git: раньше журнал начинался только после успешного merge.
+    mkdir -p "$STATE"
+    local update_log=$STATE/last-update.log
+    printf 'HyperStack update: %s -> %s\n' "$local_" "$remote" > "$update_log"
+    git -C "$REPO" merge --ff-only "$remote" 2>&1 | tee -p -a "$update_log"
+    local merge_status=${PIPESTATUS[0]}
+    if ((merge_status != 0)); then
+        printf '\n  %sОбновление не удалось.%s Журнал: %s\n  Нажмите любую клавишу...' "$ERR" "$R" "$update_log"
+        read -r -s -n1; return "$merge_status"
     fi
     local args=(--no-wallpapers)   # коллекция обоев (~2 ГБ) при обновлении не качается
     [[ -f $STATE/personal ]] && args+=(--personal)
