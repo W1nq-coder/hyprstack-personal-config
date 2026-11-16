@@ -6,6 +6,7 @@
 # Весь скрипт — одна функция, которая вызывается последней строкой: install.sh заменяет этот
 # файл прямо во время обновления, а bash дочитывает скрипт по кускам.
 main() {
+    set -o pipefail
     export LC_ALL=C.UTF-8
     local STATE=${XDG_STATE_HOME:-$HOME/.local/state}/hyprstack-personal
     local REPO
@@ -77,11 +78,6 @@ main() {
     fi
 
     # ---- Обновление ----
-    if [[ -n $(git -C "$REPO" status --porcelain --untracked-files=no) ]]; then
-        printf '  %sОбновление не выполнено:%s в %s есть ваши незакоммиченные правки.\n' "$ERR" "$R" "$REPO"
-        printf '  Сохраните их и повторите: git pull && ./install.sh\n\n  Нажмите любую клавишу...'
-        read -r -s -n1; return 1
-    fi
     # Если окно закроют посреди обновления, установка всё равно доходит до конца: после git pull
     # новых коммитов уже нет, и оборванную установку никто не повторил бы.
     trap '' HUP
@@ -92,14 +88,67 @@ main() {
         printf '  %sОбновление не выполнено:%s коммит %s не подписан доверенным ключом.\n\n  Нажмите любую клавишу...' "$ERR" "$R" "$remote"
         read -r -s -n1; return 1
     fi
+    # Правки в клоне не должны требовать ручной работы с Git. Сохраняем их локально,
+    # затем обновляем чистый репозиторий. Настройки в ~/.config здесь не затрагиваются.
+    local saved_changes="" dirty_choice=1
+    if [[ -n $(git -C "$REPO" status --porcelain --untracked-files=all) ]]; then
+        printf '\n  %sВ папке обновления есть ваши незакоммиченные правки.%s\n' "$B" "$R"
+        printf '  Новая версия заменит их. Перед этим сохраним резервную копию на этом устройстве.\n'
+        printf '  Ничего коммитить или отправлять на GitHub не нужно.\n\n'
+        render_dirty() {
+            local update=" Игнорировать правки и обновить " cancel=" Отмена "
+            ((dirty_choice == 0)) && update="${REV}${ACC}${B}${update}${R}" || update="${D}${update}${R}"
+            ((dirty_choice == 1)) && cancel="${REV}${ACC}${B}${cancel}${R}" || cancel="${D}${cancel}${R}"
+            printf '\r\e[K  %s  %s\n  %s←/→ выбрать · Enter подтвердить · Y обновить · Esc отмена%s\e[1A' "$update" "$cancel" "$D" "$R"
+        }
+        printf '%s' "$HIDE"
+        render_dirty
+        while IFS= read -rsn1 key; do
+            if [[ $key == $'\e' ]]; then
+                read -rsn2 -t 0.05 rest || rest=""
+                if [[ -z $rest ]]; then dirty_choice=1; break; fi
+                key+=$rest
+            fi
+            case $key in
+                $'\e[C' | $'\e[D' | $'\t' | h | l) dirty_choice=$((1 - dirty_choice)); render_dirty ;;
+                y | Y | н | Н) dirty_choice=0; break ;;
+                n | N | т | Т | q | Q) dirty_choice=1; break ;;
+                "") break ;;
+            esac
+        done
+        printf '%s\n\n' "$SHOW"
+        if ((dirty_choice != 0)); then
+            printf '  Обновление отменено. Ваши правки сохранены без изменений.\n'
+            return 0
+        fi
+        # stash включает новые файлы; игнорируемые файлы и коммиты пользователя не удаляются.
+        if ! git -C "$REPO" stash push --include-untracked -m "HyperStack before update $(date -Iseconds)"; then
+            printf '  %sНе удалось сохранить правки. Обновление остановлено.%s\n' "$ERR" "$R"
+            read -r -s -n1; return 1
+        fi
+        saved_changes=$(git -C "$REPO" rev-parse refs/stash) || return 1
+        mkdir -p "$STATE"
+        printf '%s %s\n' "$saved_changes" "$REPO" >> "$STATE/saved-changes"
+        chmod 600 "$STATE/saved-changes"
+        printf '  Резервная копия правок: %s\n' "$saved_changes"
+        printf '  Она хранится локально в Git stash и не отправляется на GitHub.\n'
+    fi
     printf '  %s▶ git merge --ff-only %s%s\n' "$B" "${remote:0:12}" "$R"
     # Сохраняем также ошибки Git: раньше журнал начинался только после успешного merge.
     mkdir -p "$STATE"
     local update_log=$STATE/last-update.log
     printf 'HyperStack update: %s -> %s\n' "$local_" "$remote" > "$update_log"
-    git -C "$REPO" merge --ff-only "$remote" 2>&1 | tee -p -a "$update_log"
+    git -C "$REPO" merge --ff-only --no-overwrite-ignore "$remote" 2>&1 | tee -p -a "$update_log"
     local merge_status=${PIPESTATUS[0]}
     if ((merge_status != 0)); then
+        # Неуспешный fast-forward оставляет HEAD прежним: возвращаем отложенные правки.
+        if [[ -n $saved_changes && $(git -C "$REPO" rev-parse HEAD) == "$local_" ]]; then
+            if git -C "$REPO" stash apply --index "$saved_changes" 2>&1 | tee -p -a "$update_log"; then
+                printf '  Прежние правки восстановлены; резервная копия также сохранена.\n'
+            else
+                printf '  %sАвтовосстановление не завершилось. Копия правок: %s%s\n' "$ERR" "$saved_changes" "$R"
+            fi
+        fi
         printf '\n  %sОбновление не удалось.%s Журнал: %s\n  Нажмите любую клавишу...' "$ERR" "$R" "$update_log"
         read -r -s -n1; return "$merge_status"
     fi

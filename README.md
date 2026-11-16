@@ -10,6 +10,21 @@ local voice dictation (whisper.cpp, Vulkan), night light (hyprsunset) with sched
 editor, mouse & touchpad settings page, screen recording indicator. UI is in Russian and English.
 Install: `git clone https://github.com/W1nq-coder/hyprstack-personal-config.git && cd hyprstack-personal-config && ./install.sh`
 
+## Обновление, если в клоне есть свои правки
+
+После «Обновить» → «Да» окно предложит **«Игнорировать правки и обновить»** или **«Отмена»**,
+если файлы в папке репозитория были изменены. По умолчанию выбрана отмена.
+При продолжении правки, включая новые неигнорируемые файлы, сохраняются локально в Git stash,
+после чего устанавливается версия с GitHub. На GitHub ваша копия не отправляется.
+Если Git не смог применить обновление, прежние правки автоматически восстанавливаются.
+Существующие локальные коммиты не удаляются; при расхождении истории обновление остановится.
+
+Список сохранённых копий: `~/.local/state/hyprstack-personal/saved-changes`.
+Ошибки Git: `~/.local/state/hyprstack-personal/last-update.log`;
+журнал установки: `~/.local/state/hyprstack-personal/last-install.log`.
+Резервную копию можно посмотреть через `git stash list` внутри клона. Она не возвращается
+поверх новой версии автоматически, чтобы те же правки не мешали последующим обновлениям.
+
 ## Перенос актуальной версии на ноутбук
 
 В репозитории опубликованы локальные доработки диктовки и выбора цветов логотипа.
