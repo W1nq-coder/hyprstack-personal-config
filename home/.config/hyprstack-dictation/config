@@ -25,7 +25,7 @@ SOUND_VOLUME=0.6
 # Подсказка для модели: помогает правильно писать английские термины.
 PROMPT="Диктовка команд в терминал Linux: git commit, git push, sudo pacman, paru, systemctl, docker, kitty, Hyprland, Python, JSON, API, SSH, cd, ls, grep."
 
-# Ускорение: 1 — Vulkan на встроенной графике Intel, 0 — только процессор.
+# Ускорение: 1 — видеокарта через Vulkan, 0 — только процессор.
 USE_GPU=1
 THREADS=8
 

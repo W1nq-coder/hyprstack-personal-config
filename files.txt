@@ -17,6 +17,11 @@
 ~ .config/hyprstack/media.json
 ~ .config/hyprstack/bar.json
 ~ .config/hyprstack/taskbar.json
+# Снимок внешнего вида и поведения; только с --personal, без координат погоды и личной картинки.
+~ .config/hyprstack/shell.json
+~ .config/hyprstack/taskbar-style.json
+~ .config/hyprstack/desktop.json
+~ .config/hyprstack/recorder.json
 ~ .config/hyprstack/effects.json
 ~ .config/hyprstack/workspace-icons.json
 ~ .config/hyprstack/vpn-ui.json
@@ -140,6 +145,8 @@
 .local/share/hyprstack-personal/shell/modules/background/Background.qml
 # Панель задач: логотип (выбор картинки, меню по правому клику)
 .local/share/hyprstack-personal/shell/services/TaskbarStyle.qml
+.local/share/hyprstack-personal/shell/components/LogoPicture.qml
+.local/share/hyprstack-personal/shell/components/ColourPalette.qml
 .local/share/hyprstack-personal/shell/modules/bar/components/OsIcon.qml
 .local/share/hyprstack-personal/shell/modules/nexus/pages/panels/taskbar/TaskbarLogoPage.qml
 # Панель задач: три вида (значки, док)
@@ -152,6 +159,7 @@
 .local/share/hyprstack-personal/shell/modules/drawers/BarEditPanel.qml
 .local/share/hyprstack-personal/shell/modules/lock/NotifGroup.qml
 .local/share/hyprstack-personal/shell/modules/utilities/toasts/ToastItem.qml
+.local/share/hyprstack-personal/shell/assets/distro-logos/colours.json
 .local/share/hyprstack-personal/shell/assets/distro-logos/LICENSE-font-logos.txt
 .local/share/hyprstack-personal/shell/assets/distro-logos/almalinux.svg
 .local/share/hyprstack-personal/shell/assets/distro-logos/alpine.svg

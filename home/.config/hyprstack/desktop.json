@@ -1,0 +1,12 @@
+{
+    "iconSize": "medium",
+    "sortBy": "name",
+    "showIcons": false,
+    "positions": {
+        "f:steam.desktop": [
+            0,
+            0
+        ]
+    },
+    "customIcons": {}
+}

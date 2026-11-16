@@ -1,6 +1,6 @@
 {
-    "design": "orb",
-    "sort": "source",
+    "design": "cards",
+    "sort": "ping",
     "showAddress": true,
     "showProtocol": true,
     "connectFastest": false,

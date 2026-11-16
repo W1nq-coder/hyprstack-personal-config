@@ -10,6 +10,26 @@ local voice dictation (whisper.cpp, Vulkan), night light (hyprsunset) with sched
 editor, mouse & touchpad settings page, screen recording indicator. UI is in Russian and English.
 Install: `git clone https://github.com/W1nq-coder/hyprstack-personal-config.git && cd hyprstack-personal-config && ./install.sh`
 
+## Перенос актуальной версии на ноутбук
+
+В репозитории опубликованы локальные доработки диктовки и выбора цветов логотипа.
+Для ноутбука с уже установленным HyperStack:
+
+```sh
+git clone https://github.com/W1nq-coder/hyprstack-personal-config.git ~/hyprstack-personal-config
+cd ~/hyprstack-personal-config
+./install.sh --check --no-wallpapers
+./install.sh --no-wallpapers
+```
+
+Если клон уже есть, вместо `git clone` выполните в нём `git pull --ff-only`.
+Обычная установка переносит код доработок, сохраняя настройки оборудования ноутбука.
+`--personal` дополнительно восстанавливает снимок авторских настроек, включая `shell.json`,
+`taskbar-style.json`, `desktop.json` и `recorder.json`. В `local.lua` этого снимка есть
+параметры NVIDIA: на ноутбуке с Intel/AMD используйте обычную установку без `--personal`.
+Координаты погоды и путь к личной картинке логотипа в снимок не включены.
+Подробности сверки файлов — [SYNC_REPORT.md](SYNC_REPORT.md).
+
 ## Как это выглядит
 
 ### Панель задач у любого края экрана
@@ -159,8 +179,9 @@ cd ~/hyprstack-personal-config
 - **Мышь и тачпад** (Настройки → Мышь и тачпад): скорость, ускорение, прокрутка, касания, жесты.
   Хранятся в `~/.config/hyprstack/input.json`, применяет `input-ui.lua`.
 - **Кнопка питания** открывает меню сеанса оболочки (бинд в `extras.lua`).
-- **Голосовой ввод** — Super+Shift+D. Распознавание локально (whisper.cpp на графике Intel через Vulkan),
-  текст вставляется в активное окно. Режимы «нажать/нажать» и «удерживать», язык, модель, микрофон, звуки —
+- **Голосовой ввод** — Super+Shift+D. Распознавание локально (whisper.cpp на видеокарте через Vulkan),
+  текст вставляется в активное окно. Тишина и шум вырезаются (Silero VAD), зацикленный текст
+  («а-а-а-а…», повтор фразы) не печатается. Режимы «нажать/нажать» и «удерживать», язык, модель, микрофон, звуки —
   в Настройки → Голосовой ввод. Скрипт `~/.local/bin/dictation`, настройки `~/.config/hyprstack-dictation/config`.
 - **Ночной режим** — тёплый оттенок экрана (hyprsunset). Кнопка с луной в быстрых переключателях,
   Super+Shift+N — вкл/выкл, Super+Alt+= / Super+Alt+− — теплее/холоднее, расписание (по умолчанию 21:00–7:00)
@@ -275,12 +296,16 @@ yay -S --needed visual-studio-code-bin yandex-music incy-bin
 - **AppImage-программы** (deckcraft, effectcraft, filmcraft, gridcraft, lightcraft, pdfcraft, photocraft,
   wordcraft) — скачать в `~/Applications`.
 
-### 4. Модель распознавания речи (~550 МБ)
+### 4. Модель распознавания речи
+
+Видеокарта с 4+ ГБ памяти — `large-v3-turbo` без сжатия (~1,6 ГБ, точнее), встроенная графика —
+`large-v3-turbo-q5_0` (~550 МБ). Плюс Silero VAD (~1 МБ) — вырезает тишину и шум, на которых whisper выдумывает текст.
 
 ```sh
-mkdir -p ~/.local/share/whisper-models
-curl -L -o ~/.local/share/whisper-models/ggml-large-v3-turbo-q5_0.bin \
-  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin
+mkdir -p ~/.local/share/whisper-models && cd ~/.local/share/whisper-models
+hf=https://huggingface.co/ggerganov/whisper.cpp/resolve/main
+curl -LO $hf/ggml-large-v3-turbo.bin        # или: curl -LO $hf/ggml-large-v3-turbo-q5_0.bin
+curl -LO https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin
 ```
 
 ### 5. Кнопка питания открывает меню вместо выключения
@@ -336,7 +361,7 @@ git pull
    возвращает прежние файлы и запускает стандартную оболочку, чтобы не остаться без панели.
 
 Не хранится в репозитории (install.sh подскажет, если нужно):
-- модель whisper `~/.local/share/whisper-models/ggml-large-v3-turbo-q5_0.bin`;
+- модели whisper в `~/.local/share/whisper-models/` (`ggml-large-v3-turbo.bin` или `ggml-large-v3-turbo-q5_0.bin`, `ggml-silero-v6.2.0.bin`);
 - `/etc/systemd/logind.conf.d/50-power-key.conf` с `HandlePowerKey=ignore` (нужен sudo);
 - две строки удалённого управления в `~/.config/kitty/kitty.conf` (для вставки голосового текста в kitty).
 

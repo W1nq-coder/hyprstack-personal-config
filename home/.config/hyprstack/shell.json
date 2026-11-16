@@ -1,0 +1,182 @@
+{
+    "appearance": {
+        "scale": 1,
+        "transparency": {
+            "base": 0.9713408628442368,
+            "enabled": true
+        }
+    },
+    "background": {
+        "visualiser": {
+            "enabled": false
+        },
+        "wallpaperEnabled": true
+    },
+    "bar": {
+        "activeWindow": {
+            "compact": false,
+            "showOnHover": true
+        },
+        "entries": [
+            {
+                "enabled": true,
+                "id": "logo"
+            },
+            {
+                "enabled": true,
+                "id": "workspaces"
+            },
+            {
+                "enabled": true,
+                "id": "spacer"
+            },
+            {
+                "enabled": true,
+                "id": "activeWindow"
+            },
+            {
+                "enabled": true,
+                "id": "spacer"
+            },
+            {
+                "enabled": true,
+                "id": "tray"
+            },
+            {
+                "enabled": true,
+                "id": "clock"
+            },
+            {
+                "enabled": true,
+                "id": "statusIcons"
+            },
+            {
+                "enabled": true,
+                "id": "vpn"
+            },
+            {
+                "enabled": true,
+                "id": "power"
+            }
+        ],
+        "statusIcons": [
+            {
+                "enabled": true,
+                "id": "kbLayout"
+            },
+            {
+                "enabled": false,
+                "id": "lockStatus"
+            },
+            {
+                "enabled": true,
+                "id": "audio"
+            },
+            {
+                "enabled": true,
+                "id": "microphone"
+            },
+            {
+                "enabled": true,
+                "id": "network"
+            },
+            {
+                "enabled": true,
+                "id": "bluetooth"
+            },
+            {
+                "enabled": true,
+                "id": "battery"
+            }
+        ],
+        "tray": {
+            "compact": false,
+            "recolour": false
+        },
+        "workspaces": {
+            "activeIndicator": true,
+            "activeTrail": true,
+            "occupiedBg": false,
+            "perMonitor": true,
+            "showUnoccupied": false,
+            "shown": 10
+        }
+    },
+    "dashboard": {
+        "resourceUpdateInterval": 2000,
+        "showClockSeconds": true,
+        "showOnHover": false,
+        "showWeather": true
+    },
+    "general": {
+        "apps": {
+            "explorer": [
+                "dolphin",
+                "--select"
+            ],
+            "terminal": [
+                "kitty"
+            ]
+        },
+        "language": "ru_RU"
+    },
+    "launcher": {
+        "showOnHover": false
+    },
+    "services": {
+        "smartScheme": false,
+        "weatherEnabled": false,
+        "weatherProvider": "open-meteo"
+    },
+    "utilities": {
+        "enabled": false,
+        "quickToggles": [
+            {
+                "enabled": true,
+                "id": "wifi"
+            },
+            {
+                "enabled": true,
+                "id": "bluetooth"
+            },
+            {
+                "enabled": true,
+                "id": "mic"
+            },
+            {
+                "enabled": true,
+                "id": "settings"
+            },
+            {
+                "enabled": true,
+                "id": "gameMode"
+            },
+            {
+                "enabled": true,
+                "id": "nightLight"
+            },
+            {
+                "enabled": true,
+                "id": "dnd"
+            },
+            {
+                "enabled": true,
+                "id": "vpn"
+            }
+        ],
+        "vpn": {
+            "enabled": true,
+            "provider": [
+                {
+                    "connectCmd": [],
+                    "disconnectCmd": [],
+                    "displayName": "VPN",
+                    "id": "vpn-mvy364vg-3n7c0",
+                    "interface": "hyprstack-vpn",
+                    "name": "native"
+                }
+            ],
+            "selectedProvider": "vpn-mvy364vg-3n7c0"
+        }
+    }
+}

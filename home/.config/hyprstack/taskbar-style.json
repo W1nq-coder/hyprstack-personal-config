@@ -1,0 +1,25 @@
+{
+    "view": "labels",
+    "stackingEdge": "bottom",
+    "logo": {
+        "mode": "logo",
+        "glyph": "terminal",
+        "path": "",
+        "id": "archlinux",
+        "colour": "original",
+        "tint": false
+    },
+    "appearance": {
+        "dockEdge": "bottom",
+        "dockAlign": "center",
+        "dockRadius": 16,
+        "dockScale": 100,
+        "dockOpacity": 100,
+        "dockDim": 0,
+        "dockGap": 10,
+        "barScale": 100,
+        "barOpacity": 100,
+        "barDim": 0
+    },
+    "layout": null
+}

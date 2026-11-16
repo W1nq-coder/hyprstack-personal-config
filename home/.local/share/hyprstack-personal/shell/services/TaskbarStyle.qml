@@ -5,7 +5,7 @@ pragma Singleton
 //   view          "labels" (icons + titles), "icons" (icons only) or "dock" (GNOME style: the bar
 //                 on one edge, the applications in a separate dock on the opposite edge)
 //   stackingEdge  edge of the taskbar in the floating layout: "bottom" | "top" | "left" | "right"
-//   logo          the picture on the logo button: {mode, glyph, path, tint}
+//   logo          the picture on the logo button: {mode, glyph, path, id, colour, tint}
 //   layout        order of the bar elements in the floating layout (null = default, see editor)
 
 import QtQuick
@@ -30,6 +30,7 @@ Singleton {
     property string logoGlyph: "apps"
     property string logoPath: ""
     property string logoId: ""             // a logo from the built-in catalogue (assets/distro-logos)
+    property string logoColour: "original" // distribution logos: "original" | "theme" | "#rrggbb"
     property bool logoTint: false          // recolour a custom picture with the theme colour
     property var layout: null              // array of element ids, see the editor
 
@@ -42,7 +43,7 @@ Singleton {
     // The distribution of this computer (ID of /etc/os-release) as a logo of the catalogue, or "".
     property string osId: ""
     readonly property string detectedLogo: {
-        const alias = ({arch: "archlinux", opensuse: "opensuse", "opensuse-leap": "opensuse-leap", "opensuse-tumbleweed": "opensuse-tumbleweed", pop: "pop-os", popos: "pop-os", endeavouros: "endeavour", rocky: "rocky-linux", almalinux: "almalinux", kali: "kali-linux", mint: "linuxmint", rhel: "redhat", alpine: "alpine"});
+        const alias = ({arch: "archlinux", opensuse: "opensuse", "opensuse-leap": "leap", "opensuse-tumbleweed": "tumbleweed", pop: "pop-os", popos: "pop-os", endeavouros: "endeavour", rocky: "rocky-linux", almalinux: "almalinux", kali: "kali-linux", mint: "linuxmint", rhel: "redhat", alpine: "alpine"});
         const id = alias[osId] ?? osId;
         return logoKnown(id) ? id : "";
     }
@@ -70,6 +71,27 @@ Singleton {
         logoMode = "logo";
         logoId = id;
         saveTimer.restart();
+    }
+
+    // Brand colours of the logos (assets/distro-logos/colours.json: {id: "#rrggbb"}): the "original" colours.
+    property var brandColours: ({})
+
+    function brandColour(id: string): string {
+        const c = brandColours[id];
+        return typeof c === "string" && /^#[0-9a-fA-F]{6}$/.test(c) ? c : "";
+    }
+
+    FileView {
+        path: root.logoDir + "/colours.json"
+        printErrors: false
+        onLoaded: {
+            try {
+                const o = JSON.parse(text());
+                root.brandColours = (o !== null && typeof o === "object" && !Array.isArray(o)) ? o : ({});
+            } catch (err) {
+                root.brandColours = ({});
+            }
+        }
     }
 
     FileView {
@@ -311,6 +333,17 @@ Singleton {
         saveTimer.restart();
     }
 
+    function validColour(c: var): bool {
+        return c === "original" || c === "theme" || (typeof c === "string" && /^#[0-9a-fA-F]{6}$/.test(c));
+    }
+
+    function setLogoColour(value: string): void {
+        if (!validColour(value))
+            return;
+        logoColour = value.toLowerCase();
+        saveTimer.restart();
+    }
+
     function setLogoTint(value: bool): void {
         logoTint = value;
         saveTimer.restart();
@@ -321,6 +354,7 @@ Singleton {
         logoPath = "";
         logoId = "";
         logoTint = false;
+        logoColour = "original";
         saveTimer.restart();
     }
 
@@ -352,6 +386,7 @@ Singleton {
         root.logoId = typeof logo.id === "string" && /^[a-z0-9-]+$/.test(logo.id) ? logo.id : "";
         root.logoPath = (typeof logo.path === "string" && logo.path.startsWith("/")) ? logo.path : "";
         root.logoTint = logo.tint === true;
+        root.logoColour = validColour(logo.colour) ? logo.colour.toLowerCase() : "original";
         const look = (data.appearance !== null && typeof data.appearance === "object") ? data.appearance : {};
         root.dockEdge = dockEdges.includes(look.dockEdge) ? look.dockEdge : "auto";
         root.dockAlign = dockAligns.includes(look.dockAlign) ? look.dockAlign : "center";
@@ -372,6 +407,7 @@ Singleton {
                 glyph: root.logoGlyph,
                 path: root.logoPath,
                 id: root.logoId,
+                colour: root.logoColour,
                 tint: root.logoTint
             },
             appearance: {

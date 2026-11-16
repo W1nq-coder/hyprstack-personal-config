@@ -71,10 +71,9 @@ Item {
     Component {
         id: distroIcon
 
-        ColouredIcon {
+        LogoPicture {
             source: SysInfo.osLogo
-            implicitSize: root.logoSize
-            colour: Colours.palette.m3tertiary
+            size: root.logoSize
         }
     }
 
@@ -82,20 +81,20 @@ Item {
     Component {
         id: detectedIcon
 
-        ColouredIcon {
+        LogoPicture {
             source: Paths.fileUrl(TaskbarStyle.logoFile(TaskbarStyle.detectedLogo))
-            implicitSize: root.logoSize
-            colour: Colours.palette.m3tertiary
+            logoId: TaskbarStyle.detectedLogo
+            size: root.logoSize
         }
     }
 
     Component {
         id: catalogueLogo
 
-        ColouredIcon {
+        LogoPicture {
             source: Paths.fileUrl(TaskbarStyle.logoFile(TaskbarStyle.logoId))
-            implicitSize: root.logoSize
-            colour: Colours.palette.m3tertiary
+            logoId: TaskbarStyle.logoId
+            size: root.logoSize
         }
     }
 

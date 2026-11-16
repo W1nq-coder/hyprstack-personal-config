@@ -18,9 +18,6 @@
     "slots": {
         "\tCapture: Screenshot current monitor\t|print": [
             "CTRL + Print"
-        ],
-        "\tShell: Open overview\tSUPER|o": [
-            "CTRL + O"
         ]
     },
     "version": 2

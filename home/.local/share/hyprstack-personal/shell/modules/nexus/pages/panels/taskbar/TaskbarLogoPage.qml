@@ -23,6 +23,19 @@ PageBase {
     readonly property bool ru: String(Tr.language || Qt.locale().name).startsWith("ru")
     function l(en: string, rus: string): string { return root.ru ? rus : en; }
 
+    property string query: ""
+    property bool paletteOpen: false
+
+    readonly property var foundLogos: {
+        const tokens = query.trim().toLowerCase().replace(/ё/g, "е").split(/\s+/).filter(t => t);
+        return TaskbarStyle.catalogue.filter(e => {
+            const hay = (e.name + " " + e.id).toLowerCase();
+            return tokens.every(t => hay.includes(t));
+        });
+    }
+
+    readonly property var colourChoices: ["#e53935", "#fb8c00", "#fdd835", "#43a047", "#00acc1", "#1e88e5", "#5e35b1", "#d81b60", "#ffffff", "#9e9e9e", "#000000"]
+
     title: l("Taskbar logo", "Логотип панели")
     isSubPage: true
 
@@ -114,11 +127,11 @@ PageBase {
                 label: root.l("Distribution", "Дистрибутив")
                 onClicked: TaskbarStyle.setLogo("distro", "", "")
 
-                ColouredIcon {
+                LogoPicture {
                     anchors.centerIn: parent
                     source: TaskbarStyle.detectedLogo !== "" ? Paths.fileUrl(TaskbarStyle.logoFile(TaskbarStyle.detectedLogo)) : SysInfo.osLogo
-                    implicitSize: 32
-                    colour: Colours.palette.m3tertiary
+                    logoId: TaskbarStyle.detectedLogo
+                    size: 32
                 }
             }
         }
@@ -126,34 +139,17 @@ PageBase {
         // ---- distributions (catalogue with search) ----
         SectionHeader { text: root.l("Distributions and projects", "Дистрибутивы и проекты") }
 
-        StyledRect {
+        StyledTextField {
+            id: search
+
             Layout.fillWidth: true
-            implicitHeight: 44
-            radius: Tokens.rounding.full
-            color: Colours.tPalette.m3surfaceContainer
-
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 16
-                anchors.rightMargin: 16
-                spacing: 10
-
-                MaterialIcon {
-                    text: "search"
-                    color: Colours.palette.m3onSurfaceVariant
-                }
-
-                StyledTextField {
-                    id: search
-
-                    Layout.fillWidth: true
-                    placeholderText: root.l("Search by name (Arch, Fedora, Ubuntu…)", "Поиск по названию (Arch, Fedora, Ubuntu…)")
-                }
-            }
+            leadingIcon: "search"
+            placeholderText: root.l("Search by name (Arch, Fedora, Ubuntu…)", "Поиск по названию (Arch, Fedora, Ubuntu…)")
+            onTextChanged: root.query = text
         }
 
         StyledText {
-            visible: logoGrid.count === 0
+            visible: root.foundLogos.length === 0
             text: root.l("Nothing found", "Ничего не найдено")
             color: Colours.palette.m3onSurfaceVariant
         }
@@ -161,17 +157,11 @@ PageBase {
         Flow {
             id: logoGrid
 
-            readonly property var found: {
-                const q = search.text.trim().toLowerCase();
-                return TaskbarStyle.catalogue.filter(e => q === "" || e.name.toLowerCase().includes(q) || e.id.includes(q));
-            }
-            readonly property int count: found.length
-
             Layout.fillWidth: true
             spacing: 8
 
             Repeater {
-                model: logoGrid.found
+                model: root.foundLogos
 
                 LogoCard {
                     id: entry
@@ -182,14 +172,99 @@ PageBase {
                     selected: TaskbarStyle.logoMode === "logo" && TaskbarStyle.logoId === modelData.id
                     onClicked: TaskbarStyle.setLogoId(modelData.id)
 
-                    ColouredIcon {
+                    LogoPicture {
                         anchors.centerIn: parent
                         source: Paths.fileUrl(TaskbarStyle.logoFile(entry.modelData.id))
-                        implicitSize: 36
-                        colour: Colours.palette.m3tertiary
+                        logoId: entry.modelData.id
+                        size: 36
                     }
                 }
             }
+        }
+
+        // ---- colour of the distribution logos ----
+        SectionHeader { text: root.l("Logo colour", "Цвет логотипа") }
+
+        Flow {
+            Layout.fillWidth: true
+            spacing: 8
+
+            LogoCard {
+                compact: true
+                selected: TaskbarStyle.logoColour === "original"
+                onClicked: TaskbarStyle.setLogoColour("original")
+
+                MaterialIcon {
+                    anchors.centerIn: parent
+                    text: "palette"
+                    color: Colours.palette.m3onSurface
+                    fontStyle: Tokens.font.icon.large
+                }
+            }
+
+            LogoCard {
+                compact: true
+                selected: TaskbarStyle.logoColour === "theme"
+                onClicked: TaskbarStyle.setLogoColour("theme")
+
+                MaterialIcon {
+                    anchors.centerIn: parent
+                    text: "format_color_fill"
+                    color: Colours.palette.m3tertiary
+                    fontStyle: Tokens.font.icon.large
+                }
+            }
+
+            Repeater {
+                model: root.colourChoices
+
+                LogoCard {
+                    id: swatch
+
+                    required property string modelData
+
+                    compact: true
+                    selected: TaskbarStyle.logoColour === modelData
+                    onClicked: TaskbarStyle.setLogoColour(modelData)
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 32
+                        height: 32
+                        radius: 16
+                        color: swatch.modelData
+                        border.width: 1
+                        border.color: Colours.palette.m3outlineVariant
+                    }
+                }
+            }
+        }
+
+        StyledText {
+            Layout.fillWidth: true
+            wrapMode: Text.Wrap
+            color: Colours.palette.m3onSurfaceVariant
+            text: TaskbarStyle.logoColour === "original" ? root.l("Original colours of the logo.", "Оригинальные цвета логотипа.") : TaskbarStyle.logoColour === "theme" ? root.l("Recoloured with the theme colour.", "Перекрашен в цвет темы.") : root.l("Recoloured: ", "Перекрашен: ") + TaskbarStyle.logoColour
+        }
+
+        IconTextButton {
+            Layout.alignment: Qt.AlignLeft
+            icon: "palette"
+            text: root.paletteOpen ? root.l("Close palette", "Закрыть палитру") : root.l("Choose own colour…", "Выбрать свой цвет…")
+            font: Tokens.font.body.large
+            isRound: true
+            shapeMorph: true
+            type: IconTextButton.Tonal
+            horizontalPadding: Tokens.padding.extraLarge
+            verticalPadding: Tokens.padding.medium
+            onClicked: root.paletteOpen = !root.paletteOpen
+        }
+
+        ColourPalette {
+            Layout.fillWidth: true
+            visible: root.paletteOpen
+            colour: /^#[0-9a-f]{6}$/.test(TaskbarStyle.logoColour) ? TaskbarStyle.logoColour : "#1e88e5"
+            onPicked: value => TaskbarStyle.setLogoColour(value)
         }
 
         // ---- symbols ----
@@ -286,30 +361,29 @@ PageBase {
         Component {
             id: distroLogo
 
-            ColouredIcon {
+            LogoPicture {
                 source: SysInfo.osLogo
-                implicitSize: 44
-                colour: Colours.palette.m3tertiary
+                size: 44
             }
         }
 
         Component {
             id: catalogueDetected
 
-            ColouredIcon {
+            LogoPicture {
                 source: Paths.fileUrl(TaskbarStyle.logoFile(TaskbarStyle.detectedLogo))
-                implicitSize: 44
-                colour: Colours.palette.m3tertiary
+                logoId: TaskbarStyle.detectedLogo
+                size: 44
             }
         }
 
         Component {
             id: catalogueLogo
 
-            ColouredIcon {
+            LogoPicture {
                 source: Paths.fileUrl(TaskbarStyle.logoFile(TaskbarStyle.logoId))
-                implicitSize: 44
-                colour: Colours.palette.m3tertiary
+                logoId: TaskbarStyle.logoId
+                size: 44
             }
         }
 

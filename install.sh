@@ -237,28 +237,54 @@ fi
 # ---------- 4. Модель распознавания речи и прочее ----------
 
 say "Голосовой ввод"
-model=$HOME/.local/share/whisper-models/ggml-large-v3-turbo-q5_0.bin
-if [[ -f $model ]]; then
-    echo "  модель на месте"
+models_dir=$HOME/.local/share/whisper-models
+# Видеопамять дискретной карты в МБ (NVIDIA или AMD); 0 — встроенная графика или нет данных.
+vram_mb() {
+    local mb=0 f
+    if command -v nvidia-smi >/dev/null; then
+        mb=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | sort -n | tail -n1)
+    fi
+    for f in /sys/class/drm/card*/device/mem_info_vram_total; do
+        [[ -r $f ]] && (($(<"$f") / 1048576 > ${mb:-0})) && mb=$(($(<"$f") / 1048576))
+    done
+    [[ $mb =~ ^[0-9]+$ ]] && echo "$mb" || echo 0
+}
+# fetch_model ФАЙЛ SHA256 URL — скачать только по https; подменённый или битый файл не ставится.
+fetch_model() {
+    local file=$models_dir/$1
+    mkdir -p "$models_dir"
+    if curl -L --fail --proto '=https' --proto-redir '=https' -o "$file.part" "$3" &&
+        [[ $(sha256sum < "$file.part" | cut -d' ' -f1) == "$2" ]]; then
+        mv "$file.part" "$file"
+    else
+        rm -f "$file.part"
+        warn "$1 не скачан или его контрольная сумма не совпала: файл удалён"
+    fi
+}
+# Контрольные суммы — из Hugging Face (LFS oid файлов).
+hf=https://huggingface.co/ggerganov/whisper.cpp/resolve/main
+if (($(vram_mb) >= 4000)); then
+    # Видеокарта с 4+ ГБ: turbo без сжатия, точнее. (Полная large-v3 проверена: чаще выдумывает текст.)
+    model=(ggml-large-v3-turbo.bin 1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69 "$hf/ggml-large-v3-turbo.bin" "large-v3-turbo, ~1,6 ГБ")
 else
-    warn "Нет модели whisper (large-v3-turbo-q5_0, ~550 МБ, с huggingface.co/ggerganov/whisper.cpp)"
+    # Встроенная графика: сжатая turbo, в 3 раза легче.
+    model=(ggml-large-v3-turbo-q5_0.bin 394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2 "$hf/ggml-large-v3-turbo-q5_0.bin" "large-v3-turbo-q5_0, ~550 МБ")
+fi
+vad=(ggml-silero-v6.2.0.bin 2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987
+    https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin "Silero VAD — вырезает тишину и шум, ~1 МБ")
+for m in model vad; do
+    declare -n item=$m
+    if [[ -f $models_dir/${item[0]} ]]; then
+        echo "  ${item[0]} на месте"
+        continue
+    fi
+    warn "Нет ${item[0]} (${item[3]}, с huggingface.co)"
     if ((!CHECK)) && [[ -t 0 ]]; then
         read -r -p "  Скачать сейчас? [y/N] " answer
-        if [[ $answer == [yYдД]* ]]; then
-            mkdir -p "$(dirname "$model")"
-            # Контрольная сумма из Hugging Face (LFS oid файла): подменённая или битая модель не ставится.
-            model_sha=394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2
-            if curl -L --fail --proto '=https' --proto-redir '=https' -o "$model.part" \
-                https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo-q5_0.bin &&
-                [[ $(sha256sum < "$model.part" | cut -d' ' -f1) == "$model_sha" ]]; then
-                mv "$model.part" "$model"
-            else
-                rm -f "$model.part"
-                warn "Модель не скачана или её контрольная сумма не совпала: файл удалён"
-            fi
-        fi
+        [[ $answer == [yYдД]* ]] && fetch_model "${item[0]}" "${item[1]}" "${item[2]}"
     fi
-fi
+    unset -n item
+done
 if ! grep -q -E '^\s*allow_remote_control' "$HOME/.config/kitty/kitty.conf" 2>/dev/null; then
     warn "В kitty выключено удалённое управление: текст будет печататься через wtype."
     echo "  Для вставки напрямую добавьте в ~/.config/kitty/kitty.conf:"

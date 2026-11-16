@@ -1,13 +1,13 @@
--- My HyperStack variables (application choices, appearance, key bindings).
--- Loaded by hypr-vars.lua; see CONFIGURATION.md of HyperStack for the names.
+-- My HyperStack variables (hyprstack-personal-config). Apps that are not installed
+-- here (codium, thunar, pwvucontrol, sweet-cursors) keep the stock values.
 return {
     sleepGestureCmd = "true",
     terminal = "kitty",
     browser = "firefox",
-    editor = "codium",
-    fileExplorer = "thunar",
-    audioSettings = "pwvucontrol",
-    cursorTheme = "sweet-cursors",
+    editor = "xdg-open",
+    fileExplorer = "dolphin",
+    audioSettings = "pavucontrol",
+    cursorTheme = "Adwaita",
     cursorSize = 24,
     kbTerminal = "SUPER + Return",
     kbLock = "CTRL + SUPER + L",

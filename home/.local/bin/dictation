@@ -25,6 +25,9 @@ IDLE_UNIT=hyprstack-dictation-idle
 MODE="toggle"         # toggle — нажать/нажать, hold — удерживать и говорить
 SOURCE=""             # node.name микрофона; пусто — системный по умолчанию
 MODEL="$MODELS_DIR/ggml-large-v3-turbo-q5_0.bin"
+# Модель Silero VAD: вырезает тишину и шум до распознавания (на них whisper додумывает текст).
+# Нет файла — распознаётся вся запись, как раньше.
+VAD_MODEL="$MODELS_DIR/ggml-silero-v6.2.0.bin"
 LANGUAGE="ru"         # ru | en | auto
 PROMPT=""
 SOUNDS=1
@@ -37,6 +40,12 @@ INSERT_METHOD="auto"  # auto | wtype | clipboard
 PORT=8178
 # shellcheck source=/dev/null
 [[ -r $CONFIG ]] && source "$CONFIG"
+# Модели из настроек нет на диске: взять лучшую из скачанных.
+if [[ ! -r $MODEL ]]; then
+    for m in large-v3-turbo large-v3-turbo-q8_0 large-v3-turbo-q5_0 large-v3; do
+        [[ -r $MODELS_DIR/ggml-$m.bin ]] && { MODEL=$MODELS_DIR/ggml-$m.bin; break; }
+    done
+fi
 
 mkdir -p "$RUN" && chmod 700 "$RUN"
 WAV=$RUN/record.wav
@@ -114,7 +123,9 @@ server_ready() { curl -fsS -m 1 "http://127.0.0.1:$PORT/health" 2>/dev/null | gr
 ensure_server() {
     touch "$USED"
     [[ -r $MODEL ]] || { log "model not found: $MODEL"; return 2; }
-    local sig="$MODEL|$USE_GPU|$THREADS"
+    local vad=""
+    [[ -r $VAD_MODEL ]] && vad=$VAD_MODEL
+    local sig="$MODEL|$USE_GPU|$THREADS|$vad"
     # Модель или ускорение сменили в настройках: перезапустить сервер с новыми параметрами.
     if server_active && [[ $(cat "$SERVER_SIG" 2>/dev/null) != "$sig" ]]; then
         log "settings changed: restarting whisper-server"
@@ -123,6 +134,8 @@ ensure_server() {
     if ! server_active; then
         local args=(-m "$MODEL" --host 127.0.0.1 --port "$PORT" -t "$THREADS" -l auto --suppress-nst)
         [[ $USE_GPU == 1 ]] || args+=(--no-gpu)
+        # Паузы внутри фразы оставить (иначе слова склеиваются), тишину по краям и шум — вырезать.
+        [[ -n $vad ]] && args+=(--vad -vm "$vad" -vsd 500 -vp 200)
         systemctl --user reset-failed "$SERVER_UNIT" 2>/dev/null
         # Сервер принимает звук и читает только модель: ему не нужны запись в систему и домашнюю папку,
         # новые права, чужие сетевые семейства и пространства имён (проверено с Vulkan на видеокарте).
@@ -162,24 +175,62 @@ idle_watch() {
 
 # ---------- распознавание ----------
 
-# Типичные «галлюцинации» whisper на тишине и шуме.
+# Типичные «галлюцинации» whisper на тишине и шуме (подписи из субтитров, на которых его учили).
 HALLUCINATIONS='^(продолжение следует|субтитры|спасибо за просмотр|редактор субтитров|корректор|подписывайтесь|thank you\.?|thanks for watching|you)'
 
+# transcribe [ТЕМПЕРАТУРА]
 transcribe() {
-    local response size ctx prompt=$PROMPT
+    local response prompt=$PROMPT temp=${1:-0} inc=0.2
     # Русская подсказка мешает чисто английской речи.
     [[ $LANGUAGE == en ]] && prompt=""
-    # Окно энкодера по длине записи (1500 = 30 с): короткие фразы распознаются в 2 раза быстрее.
-    size=$(stat -c %s "$WAV")
-    ctx=$(((size / 32000 + 2) * 50))
-    ((ctx >= 1500)) && ctx=0
+    # Повторный заход уже со случайностью: свой перебор температур whisper не нужен.
+    [[ $temp == 0 ]] || inc=0
+    # Окно энкодера не урезается (audio_ctx): на коротком окне модель зацикливается («а-а-а-а…»).
+    # temperature_inc > 0: если вышел мусор (высокая энтропия), whisper сам распознаёт заново.
     response=$(curl -fsS -m 120 "http://127.0.0.1:$PORT/inference" \
-        -F file=@"$WAV" -F response_format=json -F temperature=0 -F temperature_inc=0 \
-        -F audio_ctx="$ctx" -F no_timestamps=true \
+        -F file=@"$WAV" -F response_format=json -F temperature="$temp" -F temperature_inc="$inc" \
+        -F no_timestamps=true \
         -F language="$LANGUAGE" -F prompt="$prompt" 2>&1) || { log "curl: $response"; return 1; }
     # Одна строка, без лишних пробелов по краям и без управляющих символов (Esc, Enter, Ctrl-коды):
     # распознанная речь печатается в окно с фокусом, и посторонний звук не должен нажимать клавиши.
-    jq -r '.text // empty' <<<"$response" | tr '\n' ' ' | tr -d '[:cntrl:]' | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//'
+    # Длина ограничена: 2 минуты речи — это около 2500 символов.
+    jq -r '.text // empty' <<<"$response" | tr '\n' ' ' | tr -d '[:cntrl:]' |
+        sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//' | head -c 6000
+}
+
+# Зацикливание whisper: убрать подряд повторённые предложения («Почини. Почини.»),
+# а на «а-а-а-а…» / «ааааа» / одно слово много раз — вернуть код 3 (текст мусорный).
+clean_text() {
+    local loc=C.UTF-8
+    [[ ${LC_ALL:-${LC_CTYPE:-${LANG:-}}} == *[Uu][Tt][Ff]* ]] && loc=${LC_ALL:-${LC_CTYPE:-$LANG}}
+    LC_ALL=$loc awk '
+        function norm(s) { s = tolower(s); gsub(/[^[:alnum:]]+/, "", s); return s }
+        {
+            # Одно слово/слог 6 раз подряд: «а-а-а-а-а-а», «да да да да да да».
+            n = split(tolower($0), w, /[^[:alnum:]]+/); run = 1
+            for (i = 2; i <= n; i++) {
+                if (w[i] != "" && w[i] == w[i - 1]) { if (++run >= 6) exit 3 } else run = 1
+            }
+            # Буквы по кругу с периодом 1–4: «аааааааа», «абабабабабаб».
+            s = tolower($0); gsub(/[^[:alpha:]]+/, "", s); L = length(s)
+            for (k = 1; k <= 4; k++) {
+                run = 0
+                for (i = k + 1; i <= L; i++) {
+                    if (substr(s, i, 1) == substr(s, i - k, 1)) { if (++run >= 8 * k) exit 3 } else run = 0
+                }
+            }
+            # Предложение, повторённое сразу следом, — убрать повтор.
+            out = ""; prev = ""; t = $0
+            while (match(t, /[^.!?…]+[.!?…]*/)) {
+                sent = substr(t, RSTART, RLENGTH); t = substr(t, RSTART + RLENGTH)
+                key = norm(sent)
+                if (key != "" && key == prev && length(key) >= 6) continue
+                prev = key
+                sub(/^ +/, "", sent); sub(/ +$/, "", sent)
+                out = out (out == "" ? "" : " ") sent
+            }
+            print out
+        }'
 }
 
 # ---------- вставка ----------
@@ -311,6 +362,15 @@ recognize_and_insert() {
     started=$(date +%s%3N)
     text=$(transcribe) || fail "Ошибка whisper: запрос не выполнен"
     log "transcribed in $(($(date +%s%3N) - started)) ms: $text"
+    local raw=$text
+    if ! text=$(clean_text <<<"$raw"); then
+        # Зациклилась: ещё одна попытка с другой температурой, потом сдаться.
+        log "loop detected, retrying"
+        raw=$(transcribe 0.4) || fail "Ошибка whisper: запрос не выполнен"
+        log "retry: $raw"
+        text=$(clean_text <<<"$raw") || fail "Речь не распознана"
+    fi
+    [[ $text == "$raw" ]] || log "cleaned: $text"
     touch "$USED"
     # Без повторных проходов (temperature_inc=0) неразборчивый звук даёт мусор вроде «И. . .»:
     # меньше двух букв или цифр — считать, что речи не было.
@@ -328,7 +388,7 @@ recognize_and_insert() {
 
 config_json() {
     local models
-    models=$(find "$MODELS_DIR" -maxdepth 1 -name 'ggml-*.bin' -printf '%p\t%s\n' 2>/dev/null | sort |
+    models=$(find "$MODELS_DIR" -maxdepth 1 -name 'ggml-*.bin' ! -name 'ggml-silero-*' -printf '%p\t%s\n' 2>/dev/null | sort |
         jq -R -s -c '[split("\n")[] | select(length > 0) | split("\t")
             | {path: .[0], name: (.[0] | split("/")[-1] | sub("^ggml-"; "") | sub("\\.bin$"; "")), size: (.[1] | tonumber)}]')
     jq -n -c --arg mode "$MODE" --arg language "$LANGUAGE" --arg model "$MODEL" --arg source "$SOURCE" \
@@ -346,7 +406,8 @@ set_option() {
         LANGUAGE) [[ $value == auto || $value == ru || $value == en ]] ;;
         SOUNDS) [[ $value == 0 || $value == 1 ]] ;;
         SOURCE) [[ -z $value || $value =~ ^[A-Za-z0-9_.:@-]+$ ]] ;;
-        MODEL) [[ $value =~ ^[A-Za-z0-9_./-]+$ && $value == "$MODELS_DIR"/ggml-*.bin && -r $value ]] ;;
+        MODEL) [[ $value =~ ^[A-Za-z0-9_./-]+$ && $value != *..* && $value == "$MODELS_DIR"/ggml-*.bin
+               && $value != "$MODELS_DIR"/ggml-silero-* && -r $value ]] ;;
         *) echo "Неизвестная настройка: $key" >&2; return 2 ;;
     esac || { echo "Недопустимое значение для $key: $value" >&2; return 2; }
 
