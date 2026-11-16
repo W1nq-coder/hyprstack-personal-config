@@ -10,16 +10,17 @@
 #
 # Без --personal личные настройки автора (строки «~ » в files.txt) не ставятся,
 # а ваши переменные из hypr-vars.lua переносятся в vars.lua.
-# Перед заменой отличающиеся файлы сохраняются в
-# ~/.local/state/hyprstack-personal-backup/<дата>/ (тот же путь, что и в ~).
-set -uo pipefail
+# Перед заменой создаётся компактная копия оболочки и настроек.
+# Откат: ~/.local/bin/hyprstack-rollback. Хранятся две последние сжатые копии.
+set -Eeuo pipefail
 
 REPO=$(dirname "$(readlink -f "$0")")
 DATA=${XDG_DATA_HOME:-$HOME/.local/share}
 INSTALLED=${HYPRSTACK_DATA_DIR:-$DATA/hyprstack}/shell
 PERSONAL=$DATA/hyprstack-personal/shell
 PERSONAL_REL=.local/share/hyprstack-personal/shell/
-BACKUP=${XDG_STATE_HOME:-$HOME/.local/state}/hyprstack-personal-backup/$(date +%Y%m%d-%H%M%S)
+BACKUP=${TMPDIR:-/tmp}/hyprstack-install-$$
+RECOVERY=""
 CHECK=0
 APPLY=1
 MINE=0
@@ -46,6 +47,44 @@ files() { entries | sed 's/^~ //'; }
 # ---------- 1. HyperStack и пакеты ----------
 
 [[ -d $INSTALLED ]] || { echo "HyperStack не найден в $INSTALLED. Сначала установите его." >&2; exit 1; }
+
+# Снимок создаётся до первой замены файлов. Резервная копия обязательна.
+# Временные несжатые копии удаляются при выходе; постоянно остаются два сжатых снимка.
+finish_install() {
+    local result=$?
+    trap - EXIT
+    set +e
+    if ((result != 0)) && [[ -n $RECOVERY ]]; then
+        warn "Установка не завершилась. Возвращаю прежнюю оболочку."
+        local restore_args=(--archive "$RECOVERY")
+        ((APPLY)) || restore_args+=(--no-apply)
+        python3 "$HOME/.local/bin/hyprstack-rollback" "${restore_args[@]}" \
+            || warn "Автооткат не завершён. Выполните: hyprstack-rollback"
+    fi
+    [[ -d $BACKUP ]] && rm -rf -- "$BACKUP"
+    exit "$result"
+}
+trap finish_install EXIT
+if ((!CHECK)); then
+    safety_state=${XDG_STATE_HOME:-$HOME/.local/state}/hyprstack-personal
+    mkdir -p "$safety_state" "$HOME/.local/bin"
+    exec 8>"$safety_state/install.lock"
+    flock -n 8 || { warn "Другая установка уже выполняется"; exit 1; }
+    shell_unit=hyprstack.service
+    systemctl --user cat hyprstack-session.service >/dev/null 2>&1 && shell_unit=hyprstack-session.service
+    # Use the service that actually owns the current shell when both names exist.
+    qs_pid=$(pgrep -x qs | head -1 || true)
+    if [[ -n $qs_pid ]]; then
+        running_unit=$(sed -n 's#.*/\(hyprstack[^/]*\.service\)$#\1#p' "/proc/$qs_pid/cgroup" 2>/dev/null | head -1)
+        case $running_unit in hyprstack.service | hyprstack-session.service) shell_unit=$running_unit ;; esac
+    fi
+    # Recovery tool remains available even after rollback of a first installation.
+    install -m 755 "$REPO/home/.local/bin/hyprstack-rollback" "$HOME/.local/bin/hyprstack-rollback"
+    say "Резервная копия перед установкой"
+    RECOVERY=$(python3 "$HOME/.local/bin/hyprstack-rollback" create --repo "$REPO" --unit "$shell_unit") \
+        || { warn "Копия не создана: установка отменена до замены файлов"; exit 1; }
+    echo "  Если экран перестанет работать: Ctrl+Alt+F3, войдите и выполните ~/.local/bin/hyprstack-rollback"
+fi
 
 say "Пакеты"
 need=(whisper-cpp ggml-vulkan wtype wl-clipboard pipewire jq ffmpeg curl hyprsunset mpv wf-recorder dolphin github-cli
@@ -78,6 +117,7 @@ materialize() {
     for entry in "$INSTALLED/$rel"/* "$INSTALLED/$rel"/.[!.]*; do
         [[ -e $entry ]] && do_ ln -s "$entry" "$dir/$(basename "$entry")"
     done
+    return 0
 }
 
 # Во всех настоящих папках личной копии: ссылки на новые файлы из обновления,
@@ -121,7 +161,7 @@ while IFS= read -r path; do
         materialize "$dir"
     done
 done < <(files)
-((CHECK)) || refresh_links
+if ((!CHECK)); then refresh_links; fi
 ((CHECK)) && echo "  (новые и битые ссылки проверяются только при установке)"
 
 # Обновление HyperStack могло изменить оригиналы файлов, которые заменены своими.
@@ -189,7 +229,7 @@ if grep -q 'hl.dsp.group.lock_active()' "$keybinds_lua" 2>/dev/null; then
         sed -i 's/hl\.dsp\.group\.lock_active()/hl.dsp.group.lock()/' "$keybinds_lua"
     fi
 fi
-[[ -d $BACKUP ]] && echo "  прежние версии сохранены в $BACKUP"
+[[ -n $RECOVERY ]] && echo "  резервная копия: $RECOVERY"
 for script in dictation nightlight hyprstack-personal-update hyprstack-personal-update-ui hyprstack-greeter-sync caelestia-session-start; do
     [[ -f $HOME/.local/bin/$script ]] && do_ chmod +x "$HOME/.local/bin/$script"
 done
@@ -326,20 +366,16 @@ fi
 
 # ---------- 6. Применить ----------
 
+# Документальное обновление не требует перезапуска графического сеанса.
+if ((APPLY)) && [[ -n $RECOVERY ]] && python3 "$HOME/.local/bin/hyprstack-rollback" unchanged --archive "$RECOVERY"; then
+    say "Готово: установленные файлы не изменились, перезапуск не требуется"
+    exit 0
+fi
+
 ((APPLY)) || { say "Готово (без применения)"; exit 0; }
 
 say "Применение"
-# Юнит оболочки: в одних установках hyprstack.service, в других hyprstack-session.service.
-shell_unit=hyprstack.service
-systemctl --user cat hyprstack-session.service >/dev/null 2>&1 && shell_unit=hyprstack-session.service
-# Если оболочка уже запущена, перезапускаем именно тот юнит, под которым она работает: на части
-# установок есть оба юнита, и hyprstack-session.service может не работать (тогда перезапуск
-# «успешен», а оболочка остаётся старой).
-qs_pid=$(pgrep -x qs | head -1)
-if [[ -n $qs_pid ]]; then
-    running_unit=$(sed -n 's#.*/\(hyprstack[^/]*\.service\)$#\1#p' "/proc/$qs_pid/cgroup" 2>/dev/null | head -1)
-    [[ -n $running_unit ]] && shell_unit=$running_unit
-fi
+# shell_unit выбран до снимка; откат запустит ту же службу.
 fallback=$HOME/.config/systemd/user/$shell_unit.d/90-fallback.conf
 [[ -f $fallback ]] && rm -f "$fallback" && echo "  снят аварийный запуск стандартной оболочки"
 systemctl --user daemon-reload
@@ -362,36 +398,27 @@ systemctl --user enable hyprstack-personal-update.service >/dev/null 2>&1   # п
 systemctl --user enable --now hyprstack-personal-update.timer >/dev/null 2>&1 && echo "  проверка обновлений включена (раз в 2 минуты)"
 if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
     hyprctl reload >/dev/null && echo "  Hyprland перезагружен"
-    errors=$(hyprctl configerrors 2>/dev/null | grep -v -i -E '^(no errors|ok)?$')
-    [[ -n $errors ]] && warn "Ошибки конфига Hyprland:" && echo "$errors"
+    errors=$(hyprctl configerrors 2>/dev/null | grep -v -i -E '^(no errors|ok)?$' || true)
+    if [[ -n $errors ]]; then
+        warn "Ошибки конфига Hyprland:"; echo "$errors"
+        exit 1
+    fi
     "$HOME/.local/bin/nightlight" apply
 
     since=$(date '+%Y-%m-%d %H:%M:%S')
-    old_pids=$(pgrep -x qs | sort)
+    old_pid=$(systemctl --user show "$shell_unit" -p MainPID --value)
     systemctl --user restart "$shell_unit"
     sleep 8
-    new_pids=$(pgrep -x qs | sort)
+    new_pid=$(systemctl --user show "$shell_unit" -p MainPID --value)
     # Оболочка должна быть именно новым процессом, а не прежним, пережившим перезапуск.
-    if [[ -n $new_pids && -z $(comm -12 <(printf '%s\n' "$old_pids") <(printf '%s\n' "$new_pids")) ]] &&
+    if [[ $new_pid =~ ^[1-9][0-9]*$ && $new_pid != "$old_pid" ]] && systemctl --user is-active --quiet "$shell_unit" &&
         pgrep -f "qs --path $PERSONAL" >/dev/null &&
         ! journalctl --user -u "$shell_unit" --since "$since" --no-pager -o cat | grep -q -E 'ERROR|Failed to load'; then
-        echo "  оболочка перезапущена"
+        echo "  оболочка перезапущена; ручной откат: ~/.local/bin/hyprstack-rollback"
     else
         warn "Оболочка с доработками не запустилась:"
         journalctl --user -u "$shell_unit" --since "$since" --no-pager -o cat | grep -E 'ERROR|caused' | head -6
-        if [[ -d $BACKUP/$PERSONAL_REL ]]; then
-            echo "  Возвращаю прежние файлы оболочки из $BACKUP"
-            cp -a "$BACKUP/$PERSONAL_REL." "$PERSONAL/"
-        fi
-        echo "  Запускаю стандартную оболочку (без доработок)."
-        systemctl --user set-environment HYPRSTACK_SHELL_DIR="$INSTALLED"
-        mkdir -p "$HOME/.config/systemd/user/$shell_unit.d"
-        printf '[Service]\nEnvironment=HYPRSTACK_SHELL_DIR=%s\n' "$INSTALLED" \
-            > "$HOME/.config/systemd/user/$shell_unit.d/90-fallback.conf"
-        systemctl --user daemon-reload
-        systemctl --user restart "$shell_unit"
-        echo "  Когда доработки будут исправлены, удалите"
-        echo "  $fallback и запустите install.sh снова."
+        echo "  Прежняя версия будет восстановлена из сжатой резервной копии."
         exit 1
     fi
 else

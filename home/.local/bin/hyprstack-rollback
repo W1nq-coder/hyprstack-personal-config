@@ -1,0 +1,260 @@
+#!/usr/bin/env python3
+"""Compact, local recovery points for the personal HyperStack overlay."""
+import argparse
+import datetime
+import hashlib
+import json
+import os
+from pathlib import Path
+import shutil
+import stat
+import subprocess
+import sys
+import tempfile
+import zipfile
+
+HOME = Path.home()
+STATE = Path(os.environ.get('XDG_STATE_HOME', HOME / '.local/state')) / 'hyprstack-personal'
+STORE = STATE / 'recovery'
+LIMIT = 32 * 1024 * 1024
+
+
+def run(*args):
+    return subprocess.run(args, check=True, capture_output=True, text=True).stdout.strip()
+
+
+def present(path):
+    return path.exists() or path.is_symlink()
+
+
+def remove(path):
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
+    elif present(path):
+        path.unlink()
+
+
+def minimal(paths):
+    result = []
+    for p in sorted(set(paths), key=lambda x: (len(x.parts), str(x))):
+        if not any(p == q or q in p.parents for q in result):
+            result.append(p)
+    return result
+
+
+def targets(repo):
+    # Installer currently uses these HOME-relative locations. Do not follow overlay links.
+    paths = [HOME / '.local/share/hyprstack-personal/shell', HOME / '.config/hyprstack',
+             HOME / '.config/hypr/hyprland/keybinds.lua']
+    for line in (repo / 'files.txt').read_text().splitlines():
+        if not line or line.startswith('#'):
+            continue
+        rel = Path(line.removeprefix('~ '))
+        if rel.is_absolute() or '..' in rel.parts:
+            raise ValueError('Недопустимый путь в files.txt')
+        if str(rel) != '.local/bin/hyprstack-rollback':
+            paths.append(HOME / rel)
+    units = HOME / '.config/systemd/user'
+    paths.extend(units.glob('hyprstack*.service*'))
+    paths.extend(units.glob('hyprstack*.timer*'))
+    paths.extend(units.glob('hyprstack*.path*'))
+    # Record absent fallback paths too, so recovery removes a newly created fallback.
+    for name in ('hyprstack.service', 'hyprstack-session.service'):
+        paths.append(units / (name + '.d') / '90-fallback.conf')
+    for name in ('repo', 'personal'):
+        paths.append(STATE / name)
+    return minimal(paths)
+
+
+def create(repo, unit):
+    repo = Path(repo).resolve()
+    STORE.mkdir(parents=True, exist_ok=True, mode=0o700)
+    STORE.chmod(0o700)
+    roots = targets(repo)
+    records = []
+    total = 0
+    stamp = datetime.datetime.now().strftime('%Y%m%d-%H%M%S-%f')
+    final = STORE / (stamp + '.zip')
+    fd, tmp = tempfile.mkstemp(prefix='.snapshot-', dir=STORE)
+    os.close(fd)
+    try:
+        with zipfile.ZipFile(tmp, 'w', zipfile.ZIP_DEFLATED, compresslevel=6) as z:
+            def save(path):
+                nonlocal total
+                record = {'path': str(path)}
+                if not present(path):
+                    record['kind'] = 'absent'
+                elif path.is_symlink():
+                    record.update(kind='link', target=os.readlink(path))
+                elif path.is_dir():
+                    record.update(kind='dir', mode=stat.S_IMODE(path.stat().st_mode))
+                elif path.is_file():
+                    if total + path.stat().st_size > LIMIT:
+                        raise ValueError("Копия превышает 32 МиБ; обновление остановлено")
+                    data = path.read_bytes()
+                    total += len(data)
+                    if total > LIMIT:
+                        raise ValueError('Копия превышает 32 МиБ; обновление остановлено без замены файлов')
+                    key = 'data/' + str(len(records))
+                    z.writestr(key, data)
+                    record.update(kind='file', key=key, sha256=hashlib.sha256(data).hexdigest(),
+                                  mode=stat.S_IMODE(path.stat().st_mode))
+                else:
+                    raise ValueError('Необычный тип файла: ' + str(path))
+                records.append(record)
+                if record['kind'] == 'dir':
+                    for child in sorted(path.iterdir()):
+                        if child.name not in ('__pycache__', '.git'):
+                            save(child)
+            for root in roots:
+                save(root)
+            try:
+                environment = run('systemctl', '--user', 'show-environment').splitlines()
+                shell_env = next((v.split('=', 1)[1] for v in environment
+                                  if v.startswith('HYPRSTACK_SHELL_DIR=')), None)
+                env_known = True
+            except subprocess.CalledProcessError:
+                shell_env, env_known = None, False
+            meta = {'shell_env': shell_env, 'env_known': env_known, 'version': 1, 'home': str(HOME), 'roots': list(map(str, roots)),
+                    'records': records, 'unit': unit, 'repo': str(repo),
+                    'commit': run('git', '-C', str(repo), 'rev-parse', 'HEAD')}
+            z.writestr('metadata.json', json.dumps(meta))
+        # Validate every compressed member before making this the active recovery point.
+        with zipfile.ZipFile(tmp) as z:
+            if z.testzip() is not None:
+                raise ValueError('Не удалось проверить резервную копию')
+        os.replace(tmp, final)
+        (STORE / 'latest.tmp').write_text(final.name)
+        os.replace(STORE / 'latest.tmp', STORE / 'latest')
+        # Keep two complete recovery points; never prune before a new one is verified.
+        for old in sorted(STORE.glob('*.zip'))[:-2]:
+            old.unlink()
+        print('Резервная копия: %.2f МиБ. Откат: hyprstack-rollback' % (final.stat().st_size / 1048576), file=sys.stderr)
+        print(final)
+        return final
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+
+
+def restore(archive=None, no_apply=False):
+    name = archive or (STORE / 'latest').read_text().strip()
+    archive = Path(name)
+    if not archive.is_absolute():
+        archive = STORE / archive
+    with zipfile.ZipFile(archive) as z:
+        meta = json.loads(z.read('metadata.json'))
+        if meta['version'] != 1 or meta['home'] != str(HOME):
+            raise ValueError('Копия создана для другой домашней папки')
+        roots = [Path(p) for p in meta['roots']]
+        for p in roots:
+            if '..' in p.parts or not p.is_relative_to(HOME) or p == HOME:
+                raise ValueError('Недопустимый путь восстановления')
+            # Never traverse a parent symlink that appeared since snapshot creation.
+            for parent in p.parents:
+                if parent == HOME:
+                    break
+                if parent.is_symlink():
+                    raise ValueError('Папка стала ссылкой, восстановление остановлено: ' + str(parent))
+        data = {}
+        for item in meta['records']:
+            p = Path(item['path'])
+            if '..' in p.parts or not any(p == root or root in p.parents for root in roots):
+                raise ValueError('Недопустимый путь в копии')
+            if item['kind'] == 'file':
+                content = z.read(item['key'])
+                if hashlib.sha256(content).hexdigest() != item['sha256']:
+                    raise ValueError('Повреждена резервная копия')
+                data[str(p)] = content
+        # All archive data is validated before touching installed files.
+        if not no_apply:
+            run('systemctl', '--user', 'stop', meta['unit'])
+        for root in roots:
+            remove(root)
+        for item in meta['records']:
+            p = Path(item['path'])
+            kind = item['kind']
+            if kind == 'absent':
+                continue
+            p.parent.mkdir(parents=True, exist_ok=True)
+            if kind == 'dir':
+                p.mkdir(exist_ok=True)
+                p.chmod(item['mode'])
+            elif kind == 'link':
+                p.symlink_to(item['target'])
+            elif kind == 'file':
+                p.write_bytes(data[str(p)])
+                p.chmod(item['mode'])
+        # Pause offers for the rolled-back release. The Git clone is intentionally kept intact:
+        # restoring installed bytes works offline and never discards commits in the clone.
+        try:
+            current = run('git', '-C', meta['repo'], 'rev-parse', 'HEAD')
+            (STATE / 'dismissed').write_text(current + '\n')
+        except subprocess.CalledProcessError:
+            pass
+        if not no_apply:
+            run('systemctl', '--user', 'daemon-reload')
+            if meta.get('env_known'):
+                if meta.get('shell_env') is None:
+                    run('systemctl', '--user', 'unset-environment', 'HYPRSTACK_SHELL_DIR')
+                else:
+                    run('systemctl', '--user', 'set-environment', 'HYPRSTACK_SHELL_DIR=' + meta['shell_env'])
+            if os.environ.get('HYPRLAND_INSTANCE_SIGNATURE'):
+                run('hyprctl', 'reload')
+            run('systemctl', '--user', 'reset-failed', meta['unit'])
+            run('systemctl', '--user', 'restart', meta['unit'])
+        print('Прежние файлы оболочки и настройки восстановлены. Копия сохранена: ' + str(archive))
+
+
+def unchanged(archive):
+    with zipfile.ZipFile(archive) as z:
+        meta = json.loads(z.read('metadata.json'))
+        expected = {item['path']: item for item in meta['records']}
+        seen = set()
+        def same(path):
+            name = str(path)
+            seen.add(name)
+            item = expected.get(name)
+            if item is None:
+                return False
+            kind = item['kind']
+            if not present(path):
+                return kind == 'absent'
+            if path.is_symlink():
+                return kind == 'link' and os.readlink(path) == item['target']
+            if path.is_dir():
+                return kind == 'dir' and all(same(child) for child in path.iterdir()
+                                            if child.name not in ('__pycache__', '.git'))
+            return (kind == 'file' and path.is_file()
+                    and stat.S_IMODE(path.stat().st_mode) == item['mode']
+                    and hashlib.sha256(path.read_bytes()).hexdigest() == item['sha256'])
+        return all(same(Path(root)) for root in meta['roots']) and seen == set(expected)
+
+
+def main():
+    parser = argparse.ArgumentParser(description='Резервная копия и откат HyperStack')
+    parser.add_argument('action', nargs='?', choices=['create', 'restore', 'list', 'unchanged'], default='restore')
+    parser.add_argument('--repo')
+    parser.add_argument('--unit', choices=['hyprstack.service', 'hyprstack-session.service'], default='hyprstack-session.service')
+    parser.add_argument('--archive')
+    parser.add_argument('--no-apply', action='store_true')
+    args = parser.parse_args()
+    os.umask(0o077)
+    try:
+        if args.action == 'create':
+            create(args.repo or (STATE / 'repo').read_text().strip(), args.unit)
+        elif args.action == 'unchanged':
+            return 0 if unchanged(args.archive) else 1
+        elif args.action == 'list':
+            for path in sorted(STORE.glob('*.zip'), reverse=True):
+                print('%s  %.2f МиБ' % (path.name, path.stat().st_size / 1048576))
+        else:
+            restore(args.archive, args.no_apply)
+    except (OSError, ValueError, KeyError, zipfile.BadZipFile, subprocess.CalledProcessError) as error:
+        print('Восстановление/копирование не завершено: ' + str(error), file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

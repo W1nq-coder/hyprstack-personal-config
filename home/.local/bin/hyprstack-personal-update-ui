@@ -43,6 +43,7 @@ main() {
     done < <(git -C "$REPO" log --format='%s' -n 12 "$local_..$remote")
     ((count > shown)) && printf '    %s…и ещё %s%s\n' "$D" "$((count - shown))" "$R"
     printf '\n  %sОболочка на несколько секунд перезапустится. Весь ход обновления виден ниже.%s\n\n' "$D" "$R"
+    printf '  Перед установкой автоматически создаётся компактная копия. Откат: ~/.local/bin/hyprstack-rollback\n\n'
     printf '  %sУстановить обновление?%s\n\n' "$B" "$R"
 
     # Выбор «Да / Нет»: слева «Да», справа «Нет» (как в Omarchy).
