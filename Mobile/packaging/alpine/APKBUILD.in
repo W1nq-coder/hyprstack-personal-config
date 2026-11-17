@@ -1,0 +1,24 @@
+# Generated local-source APKBUILD. Run scripts/build-source.sh first.
+pkgname=hyprstack-mobile
+pkgver=0.1.0
+pkgrel=0
+pkgdesc="Hyprstack companion launcher and dashboard for Phosh"
+url="https://github.com/W1nq-coder/hyprstack-personal-config/tree/main/Mobile"
+arch="noarch"
+license="GPL-3.0-only"
+depends="python3 py3-gobject3 gtk4.0"
+checkdepends="make"
+source="$pkgname-$pkgver.tar.gz"
+builddir="$srcdir/$pkgname-$pkgver"
+check() {
+    cd "$builddir"
+    make check
+}
+package() {
+    mkdir -p "$pkgdir/usr/lib/hyprstack-mobile" "$pkgdir/usr/bin" "$pkgdir/usr/share/applications"
+    cp "$builddir/LICENSE" "$builddir/THIRD_PARTY.md" "$pkgdir/usr/lib/hyprstack-mobile/"
+    cp -r "$builddir/src" "$builddir/themes" "$builddir/scripts" "$pkgdir/usr/lib/hyprstack-mobile/"
+    printf '#!/bin/sh\nexec /usr/lib/hyprstack-mobile/scripts/run.sh "$@"\n' > "$pkgdir/usr/bin/hyprstack-mobile"
+    chmod +x "$pkgdir/usr/bin/hyprstack-mobile"
+    printf '[Desktop Entry]\nType=Application\nName=Hyprstack Mobile\nExec=hyprstack-mobile\nIcon=applications-system\nTerminal=false\nCategories=Utility;\n' > "$pkgdir/usr/share/applications/io.github.W1nqCoder.HyprstackMobile.desktop"
+}

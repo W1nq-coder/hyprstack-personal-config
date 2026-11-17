@@ -1,0 +1,222 @@
+{
+  "id": "catppuccin",
+  "name": "Catppuccin",
+  "modes": {
+    "dark": {
+      "flavour": "mocha",
+      "label": "Mocha",
+      "background": "1e1e2e",
+      "foreground": "cdd6f4",
+      "accent": "cba6f7",
+      "secondary": "89b4fa",
+      "tertiary": "f5c2e7",
+      "error": "f38ba8",
+      "success": "a6e3a1",
+      "palette": {
+        "rosewater": "f5e0dc",
+        "flamingo": "f2cdcd",
+        "pink": "f5c2e7",
+        "mauve": "cba6f7",
+        "red": "f38ba8",
+        "maroon": "eba0ac",
+        "peach": "fab387",
+        "yellow": "f9e2af",
+        "green": "a6e3a1",
+        "teal": "94e2d5",
+        "sky": "89dceb",
+        "sapphire": "74c7ec",
+        "blue": "89b4fa",
+        "lavender": "b4befe",
+        "text": "cdd6f4",
+        "subtext1": "bac2de",
+        "subtext0": "a6adc8",
+        "overlay2": "9399b2",
+        "overlay1": "7f849c",
+        "overlay0": "6c7086",
+        "surface2": "585b70",
+        "surface1": "45475a",
+        "surface0": "313244",
+        "base": "1e1e2e",
+        "mantle": "181825",
+        "crust": "11111b"
+      },
+      "ansi": [
+        "45475a",
+        "f38ba8",
+        "a6e3a1",
+        "f9e2af",
+        "89b4fa",
+        "cba6f7",
+        "94e2d5",
+        "bac2de",
+        "585b70",
+        "f38ba8",
+        "a6e3a1",
+        "f9e2af",
+        "89b4fa",
+        "cba6f7",
+        "94e2d5",
+        "cdd6f4"
+      ],
+      "roles": {
+        "surfaceContainerLowest": "11111b",
+        "surfaceContainerLow": "181825",
+        "surfaceContainer": "1e1e2e",
+        "surfaceContainerHigh": "313244",
+        "surfaceContainerHighest": "45475a",
+        "outline": "9399b2"
+      },
+      "source": "https://raw.githubusercontent.com/catppuccin/palette/main/palette.json",
+      "original": true
+    },
+    "light": {
+      "flavour": "latte",
+      "label": "Latte",
+      "background": "eff1f5",
+      "foreground": "4c4f69",
+      "accent": "8839ef",
+      "secondary": "1e66f5",
+      "tertiary": "ea76cb",
+      "error": "d20f39",
+      "success": "40a02b",
+      "palette": {
+        "rosewater": "dc8a78",
+        "flamingo": "dd7878",
+        "pink": "ea76cb",
+        "mauve": "8839ef",
+        "red": "d20f39",
+        "maroon": "e64553",
+        "peach": "fe640b",
+        "yellow": "df8e1d",
+        "green": "40a02b",
+        "teal": "179299",
+        "sky": "04a5e5",
+        "sapphire": "209fb5",
+        "blue": "1e66f5",
+        "lavender": "7287fd",
+        "text": "4c4f69",
+        "subtext1": "5c5f77",
+        "subtext0": "6c6f85",
+        "overlay2": "7c7f93",
+        "overlay1": "8c8fa1",
+        "overlay0": "9ca0b0",
+        "surface2": "acb0be",
+        "surface1": "bcc0cc",
+        "surface0": "ccd0da",
+        "base": "eff1f5",
+        "mantle": "e6e9ef",
+        "crust": "dce0e8"
+      },
+      "ansi": [
+        "bcc0cc",
+        "d20f39",
+        "40a02b",
+        "df8e1d",
+        "1e66f5",
+        "8839ef",
+        "179299",
+        "5c5f77",
+        "acb0be",
+        "d20f39",
+        "40a02b",
+        "df8e1d",
+        "1e66f5",
+        "8839ef",
+        "179299",
+        "4c4f69"
+      ],
+      "roles": {
+        "surfaceContainerLowest": "dce0e8",
+        "surfaceContainerLow": "e6e9ef",
+        "surfaceContainer": "eff1f5",
+        "surfaceContainerHigh": "ccd0da",
+        "surfaceContainerHighest": "bcc0cc",
+        "outline": "7c7f93"
+      },
+      "source": "https://raw.githubusercontent.com/catppuccin/palette/main/palette.json",
+      "original": true
+    }
+  },
+  "accents": {
+    "rosewater": {
+      "label": "Rosewater",
+      "dark": "f5e0dc",
+      "light": "dc8a78"
+    },
+    "flamingo": {
+      "label": "Flamingo",
+      "dark": "f2cdcd",
+      "light": "dd7878"
+    },
+    "pink": {
+      "label": "Pink",
+      "dark": "f5c2e7",
+      "light": "ea76cb"
+    },
+    "red": {
+      "label": "Red",
+      "dark": "f38ba8",
+      "light": "d20f39"
+    },
+    "maroon": {
+      "label": "Maroon",
+      "dark": "eba0ac",
+      "light": "e64553"
+    },
+    "peach": {
+      "label": "Peach",
+      "dark": "fab387",
+      "light": "fe640b"
+    },
+    "yellow": {
+      "label": "Yellow",
+      "dark": "f9e2af",
+      "light": "df8e1d"
+    },
+    "green": {
+      "label": "Green",
+      "dark": "a6e3a1",
+      "light": "40a02b"
+    },
+    "teal": {
+      "label": "Teal",
+      "dark": "94e2d5",
+      "light": "179299"
+    },
+    "sky": {
+      "label": "Sky",
+      "dark": "89dceb",
+      "light": "04a5e5"
+    },
+    "sapphire": {
+      "label": "Sapphire",
+      "dark": "74c7ec",
+      "light": "209fb5"
+    },
+    "blue": {
+      "label": "Blue",
+      "dark": "89b4fa",
+      "light": "1e66f5"
+    },
+    "lavender": {
+      "label": "Lavender",
+      "dark": "b4befe",
+      "light": "7287fd"
+    },
+    "mauve": {
+      "label": "Mauve",
+      "dark": "cba6f7",
+      "light": "8839ef"
+    }
+  },
+  "borderAccents": [
+    "red",
+    "peach",
+    "yellow",
+    "green",
+    "teal",
+    "blue",
+    "mauve",
+    "pink"
+  ]
+}

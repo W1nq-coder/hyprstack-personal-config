@@ -1,0 +1,28 @@
+name: mobile checks
+on:
+  push:
+    paths: ['Mobile/**', '.github/workflows/mobile.yml']
+  pull_request:
+    paths: ['Mobile/**', '.github/workflows/mobile.yml']
+  workflow_dispatch:
+defaults:
+  run:
+    working-directory: Mobile
+permissions:
+  contents: read
+jobs:
+  gtk:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y python3-gi gir1.2-gtk-4.0 xvfb dbus-x11 make
+      - run: make check
+      - name: Real GTK window on Xvfb
+        run: timeout 180s dbus-run-session -- xvfb-run -a env GDK_BACKEND=x11 GSK_RENDERER=cairo ./scripts/test-responsive.sh | tee /tmp/smoke.log && grep -q 'SMOKE OK' /tmp/smoke.log
+  alpine:
+    runs-on: ubuntu-24.04
+    container: alpine:3.23
+    steps:
+      - uses: actions/checkout@v4
+      - run: apk add python3 py3-gobject3 gtk4.0 make
+      - run: make check
