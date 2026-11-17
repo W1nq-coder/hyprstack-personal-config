@@ -60,3 +60,10 @@ CI перенесён в .github/workflows/mobile.yml основного реп�
 paths ограничен Mobile/** и самим workflow; прежнего корневого CI не было.
 Архив теперь собирается из Git tree HEAD:Mobile, без Desktop и без дополнительного уровня Mobile/.
 Alpine abuild, ARM64, GUI и физический Redmi: NOT RUN. Первичный fetch заблокирован DNS github.com.
+
+Проверка архива выявила пустой архив при git archive HEAD:Mobile из подкаталога.
+Исправлено: git -C с корнем репозитория. Повторная проверка должна содержать
+38 мобильных файлов без Desktop. Push после интеграционного коммита не прошёл:
+Could not resolve host: github.com. YAML просмотрен вручную, YAML parser отсутствует;
+GitHub Actions не запускался. Шаблонная проверка секретов совпадений не нашла,
+новых файлов больше 1 MiB нет. Это не исчерпывающий security audit.
