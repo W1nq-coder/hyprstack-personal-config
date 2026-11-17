@@ -6,7 +6,7 @@
 #                            автозапуск) поверх существующих — для восстановления моей системы
 #   ./install.sh --check     только показать, что изменится (ничего не трогает)
 #   ./install.sh --no-apply  разложить файлы, но не перезагружать Hyprland и оболочку
-#   ./install.sh --no-wallpapers  не скачивать коллекцию обоев (~2 ГБ)
+#   ./install.sh --no-wallpapers  не скачивать коллекцию обоев (~1 ГБ)
 #
 # Без --personal личные настройки автора (строки «~ » в files.txt) не ставятся,
 # а ваши переменные из hypr-vars.lua переносятся в vars.lua.
@@ -340,28 +340,15 @@ fi
 
 # ---------- 5. Обои ----------
 
-# Коллекция обоев vyrx-dev/Wallpapers (~2 ГБ). Оболочка читает обои из «Изображения/Wallpapers»
-# (HYPRSTACK_WALLPAPERS_DIR по умолчанию), поэтому клонируем именно туда. Клон без истории;
-# если папка уже есть, не трогается. Прежняя папка vyrx-wallpapers подключается ссылкой.
+# Снимок локальной коллекции хранится в Releases этого репозитория.
 say "Обои"
-pics=$(xdg-user-dir PICTURES 2>/dev/null || true)
-[[ -n $pics && $pics != "$HOME" ]] || pics=$HOME/Pictures
-wp=${HYPRSTACK_WALLPAPERS_DIR:-$pics/Wallpapers}
-old=$pics/vyrx-wallpapers
 if ((!WALLPAPERS)); then
     echo "  пропущено (--no-wallpapers)"
-elif [[ -d $wp/.git ]] || { [[ -d $wp ]] && [[ -n $(ls -A "$wp" 2>/dev/null) ]]; }; then
-    echo "  уже на месте: $wp"
-elif [[ -d $old/.git && ! -e $wp ]]; then
-    echo "  подключаю прежнюю папку: $wp -> $old"
-    do_ ln -s "$old" "$wp"
-elif ! command -v git >/dev/null; then
-    warn "Нет git, обои не скачаны"
 else
-    echo "  скачиваю https://github.com/vyrx-dev/Wallpapers (~2 ГБ) в $wp"
-    do_ mkdir -p "$(dirname "$wp")"
-    do_ git clone --depth 1 https://github.com/vyrx-dev/Wallpapers.git "$wp" \
-        || warn "Не удалось скачать обои; повторите: git clone --depth 1 https://github.com/vyrx-dev/Wallpapers.git $wp"
+    wallpaper_args=()
+    ((CHECK)) && wallpaper_args+=(--check)
+    bash "$REPO/download-wallpapers.sh" "${wallpaper_args[@]}" \
+        || warn "Не удалось скачать обои; повторите: $REPO/download-wallpapers.sh"
 fi
 
 # ---------- 6. Применить ----------

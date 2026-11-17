@@ -214,8 +214,23 @@ cd ~/hyprstack-personal-config
 `hypr-vars.lua` он переносит в `vars.lua`, а к `local.lua` только добавляет подключение `extras.lua`.
 Перед заменой создаётся сжатая копия для команды `~/.local/bin/hyprstack-rollback`.
 Для голосового ввода скрипт предложит скачать модель распознавания (~550 МБ).
-Также он сам скачает коллекцию обоев [vyrx-dev/Wallpapers](https://github.com/vyrx-dev/Wallpapers) (~2 ГБ) в
-`~/Pictures/vyrx-wallpapers`; пропустить: `./install.sh --no-wallpapers`.
+Также он скачает [снимок всех 490 локальных обоев](https://github.com/W1nq-coder/hyprstack-personal-config/releases/tag/wallpapers-2026-11-17)
+(~1 ГБ) в `$(xdg-user-dir PICTURES)/Wallpapers` (например, `~/Изображения/Wallpapers`).
+Категории и качество сохранены; источник коллекции — [vyrx-dev/Wallpapers](https://github.com/vyrx-dev/Wallpapers).
+Архив хранится в Releases этого репозитория, его SHA-256 проверяется перед распаковкой.
+Список файлов и их контрольные суммы: [`wallpapers-manifest.json`](wallpapers-manifest.json).
+Существующие файлы не заменяются; недостающие добавляются. Путь можно задать через `HYPRSTACK_WALLPAPERS_DIR`.
+Пропустить обои: `./install.sh --no-wallpapers`.
+
+На ноутбуке с уже установленной оболочкой скачайте обои отдельно (обновление через Dashboard их пропускает):
+
+```bash
+cd ~/hyprstack-personal-config # или папка вашего клона
+git pull --ff-only
+./download-wallpapers.sh
+```
+
+После загрузки они появятся в Dashboard → Управление → Обои.
 
 ## Что здесь есть
 
@@ -402,7 +417,7 @@ git pull
    `~/.local/state/hyprstack-personal-backup/<дата>/`;
 5. добавляет в `shell.json` кнопку ночного режима и Dolphin для записей экрана;
 6. предлагает скачать модель распознавания речи (~550 МБ), если её нет;
-7. скачивает обои в `~/Pictures/vyrx-wallpapers`, если папки ещё нет (`--no-wallpapers` — пропустить);
+7. добавляет недостающие обои из Releases в папку изображений `Wallpapers` (`--no-wallpapers` — пропустить);
 8. перезагружает Hyprland и оболочку. Если оболочка с доработками не запустилась,
    возвращает прежние файлы и запускает стандартную оболочку, чтобы не остаться без панели.
 
