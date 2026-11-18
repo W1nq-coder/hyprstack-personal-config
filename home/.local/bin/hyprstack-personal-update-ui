@@ -47,7 +47,7 @@ main() {
     printf '  %sУстановить обновление?%s\n\n' "$B" "$R"
 
     # Выбор «Да / Нет»: слева «Да», справа «Нет» (как в Omarchy).
-    local sel=0 key rest
+    local sel=1 key rest confirmed=0
     render() {
         local yes=" Да " no=" Нет "
         ((sel == 0)) && yes="${REV}${ACC}${B} Да ${R}" || yes="${D} Да ${R}"
@@ -64,14 +64,14 @@ main() {
         fi
         case $key in
             $'\e[C' | $'\e[D' | $'\t' | h | l | j | k | р | д) ((sel = 1 - sel)); render ;;
-            y | Y | н | Н) sel=0; render; break ;;
+            y | Y | н | Н) sel=0; confirmed=1; render; break ;;
             n | N | т | Т | q | Q) sel=1; render; break ;;
-            "") break ;;                                      # Enter
+            "") confirmed=1; break ;;                          # Enter
         esac
     done
     printf '%s\n\n' "$SHOW"
 
-    if ((sel == 1)); then
+    if ((sel == 1 || !confirmed)); then
         echo "$remote" > "$STATE/dismissed"
         printf '  %sОтказ принят.%s Это обновление больше не предлагается; следующее придёт с новым коммитом.\n\n' "$B" "$R"
         sleep 2
@@ -153,7 +153,7 @@ main() {
         printf '\n  %sОбновление не удалось.%s Журнал: %s\n  Нажмите любую клавишу...' "$ERR" "$R" "$update_log"
         read -r -s -n1; return "$merge_status"
     fi
-    local args=(--no-wallpapers)   # коллекция обоев (~2 ГБ) при обновлении не качается
+    local args=(--no-wallpapers)   # коллекция обоев (~1 ГБ) при обновлении не качается
     [[ -f $STATE/personal ]] && args+=(--personal)
     printf '\n  %s▶ ./install.sh %s%s\n\n' "$B" "${args[*]}" "$R"
     mkdir -p "$STATE"

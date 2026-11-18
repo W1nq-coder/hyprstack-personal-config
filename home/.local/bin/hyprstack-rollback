@@ -52,7 +52,7 @@ def targets(repo):
         rel = Path(line.removeprefix('~ '))
         if rel.is_absolute() or '..' in rel.parts:
             raise ValueError('Недопустимый путь в files.txt')
-        if str(rel) != '.local/bin/hyprstack-rollback':
+        if str(rel) not in ('.local/bin/hyprstack-rollback', '.local/bin/hyprstack-update-guard'):
             paths.append(HOME / rel)
     units = HOME / '.config/systemd/user'
     paths.extend(units.glob('hyprstack*.service*'))
@@ -206,10 +206,22 @@ def restore(archive=None, no_apply=False):
         print('Прежние файлы оболочки и настройки восстановлены. Копия сохранена: ' + str(archive))
 
 
-def unchanged(archive):
+def unchanged(archive, shell_only=False):
     with zipfile.ZipFile(archive) as z:
         meta = json.loads(z.read('metadata.json'))
-        expected = {item['path']: item for item in meta['records']}
+        def relevant(path):
+            if not shell_only:
+                return True
+            p = Path(path)
+            for root in (HOME / '.local/share/hyprstack-personal/shell', HOME / '.config/hyprstack',
+                         HOME / '.config/hypr', HOME / '.config/systemd/user/hyprstack.service',
+                         HOME / '.config/systemd/user/hyprstack.service.d',
+                         HOME / '.config/systemd/user/hyprstack-session.service',
+                         HOME / '.config/systemd/user/hyprstack-session.service.d'):
+                if p == root or root in p.parents:
+                    return True
+            return False
+        expected = {item['path']: item for item in meta['records'] if relevant(item['path'])}
         seen = set()
         def same(path):
             name = str(path)
@@ -228,12 +240,12 @@ def unchanged(archive):
             return (kind == 'file' and path.is_file()
                     and stat.S_IMODE(path.stat().st_mode) == item['mode']
                     and hashlib.sha256(path.read_bytes()).hexdigest() == item['sha256'])
-        return all(same(Path(root)) for root in meta['roots']) and seen == set(expected)
+        return all(same(Path(root)) for root in meta['roots'] if relevant(root)) and seen == set(expected)
 
 
 def main():
     parser = argparse.ArgumentParser(description='Резервная копия и откат HyperStack')
-    parser.add_argument('action', nargs='?', choices=['create', 'restore', 'list', 'unchanged'], default='restore')
+    parser.add_argument('action', nargs='?', choices=['create', 'restore', 'list', 'unchanged', 'shell-unchanged'], default='restore')
     parser.add_argument('--repo')
     parser.add_argument('--unit', choices=['hyprstack.service', 'hyprstack-session.service'], default='hyprstack-session.service')
     parser.add_argument('--archive')
@@ -243,8 +255,8 @@ def main():
     try:
         if args.action == 'create':
             create(args.repo or (STATE / 'repo').read_text().strip(), args.unit)
-        elif args.action == 'unchanged':
-            return 0 if unchanged(args.archive) else 1
+        elif args.action in ('unchanged', 'shell-unchanged'):
+            return 0 if unchanged(args.archive, args.action == 'shell-unchanged') else 1
         elif args.action == 'list':
             for path in sorted(STORE.glob('*.zip'), reverse=True):
                 print('%s  %.2f МиБ' % (path.name, path.stat().st_size / 1048576))

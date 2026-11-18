@@ -1,0 +1,10 @@
+[Unit]
+Description=Check for a voice model update after login
+
+[Timer]
+OnStartupSec=45s
+OnUnitActiveSec=5min
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

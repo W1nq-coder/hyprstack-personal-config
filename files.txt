@@ -56,6 +56,7 @@
 ~ .local/bin/caelestia-session-start
 .local/bin/nightlight
 .local/bin/hyprstack-rollback
+.local/bin/hyprstack-update-guard
 .local/bin/hyprstack-personal-update
 .local/bin/hyprstack-personal-update-ui
 .local/bin/hyprstack-greeter-sync
@@ -297,3 +298,9 @@
 .local/share/hyprstack-personal/shell/assets/distro-logos/xmonad.svg
 .local/share/hyprstack-personal/shell/assets/distro-logos/xorg.svg
 .local/share/hyprstack-personal/shell/assets/distro-logos/zorin.svg
+
+# Verified voice model updates (weights are stored in GitHub Releases).
+.local/bin/hyprstack-voice-update
+.local/share/hyprstack-dictation/model-release.json
+.config/systemd/user/hyprstack-voice-update.service
+.config/systemd/user/hyprstack-voice-update.timer

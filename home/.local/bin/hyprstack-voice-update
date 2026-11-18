@@ -1,0 +1,233 @@
+#!/usr/bin/env python3
+"""Opt-in model updates, independent of the shell installer and graphical session."""
+import argparse
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import wave
+
+HOME = Path.home()
+DATA = Path(os.environ.get('XDG_DATA_HOME', HOME / '.local/share'))
+STATE = Path(os.environ.get('XDG_STATE_HOME', HOME / '.local/state')) / 'hyprstack-personal/voice'
+RUNTIME = Path(os.environ.get('XDG_RUNTIME_DIR', f'/run/user/{os.getuid()}'))
+CONFIG = Path(os.environ.get('DICTATION_CONFIG', Path(os.environ.get('XDG_CONFIG_HOME', HOME / '.config')) / 'hyprstack-dictation/config'))
+MODELS = DATA / 'whisper-models'
+MANIFEST = DATA / 'hyprstack-dictation/model-release.json'
+DICTATION = HOME / '.local/bin/dictation'
+
+
+def run(args, **kwargs):
+    return subprocess.run([str(a) for a in args], check=True, **kwargs)
+
+
+def atomic(path, content):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix='.' + path.name, dir=path.parent)
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            f.write(content)
+        os.replace(name, path)
+    finally:
+        if os.path.exists(name):
+            os.unlink(name)
+
+
+def valid(path, item):
+    if not path.is_file() or path.stat().st_size != item['size']:
+        return False
+    with path.open('rb') as f:
+        return hashlib.file_digest(f, 'sha256').hexdigest() == item['sha256']
+
+
+def settings():
+    return json.loads(run([DICTATION, 'config'], capture_output=True, text=True, timeout=20).stdout)
+
+
+def selected(manifest, config):
+    return (Path(config['model']) == MODELS / manifest['files'][0]['name']
+            and Path(config.get('vadModel', '')) == MODELS / manifest['files'][1]['name']
+            and all((MODELS / f['name']).is_file() for f in manifest['files']))
+
+
+def pending(manifest, config):
+    # Choosing another model later is intentional; do not undo the user's choice.
+    accepted = STATE / 'accepted'
+    return not selected(manifest, config) and not (
+        accepted.exists() and accepted.read_text().strip() == manifest['version'])
+
+
+def set_paths(content, model, vad):
+    for key, value in [('MODEL', model), ('VAD_MODEL', vad)]:
+        quoted = "'" + str(value).replace("'", "'\"'\"'") + "'"
+        line = key + '=' + quoted
+        pattern = r'^' + key + r'=.*$'
+        if re.search(pattern, content, re.M):
+            content = re.sub(pattern, lambda _: line, content, flags=re.M)
+        else:
+            content = content.rstrip('\n') + '\n' + line + '\n'
+    return content
+
+
+def smoke_test(model, vad, config, directory):
+    # Real model/backend initialization without recording or inserting any text.
+    wav = directory / 'silence.wav'
+    with wave.open(str(wav), 'wb') as f:
+        f.setparams((1, 2, 16000, 0, 'NONE', 'not compressed'))
+        f.writeframes(b'\0' * 32000)
+    args = ['whisper-cli', '-m', model, '-f', wav, '-l', config.get('language', 'ru'),
+            '-t', str(config.get('threads', 4)), '--vad', '-vm', vad, '-nt']
+    if not config.get('useGpu', True):
+        args.append('--no-gpu')
+    with (STATE / 'model-test.log').open('w') as log:
+        run(args, stdout=log, stderr=log, timeout=180)
+
+
+def install(manifest):
+    config = settings()
+    if selected(manifest, config) and all(valid(MODELS / f['name'], f) for f in manifest['files']):
+        print('Эта модель и VAD уже выбраны; файлы проверены.')
+        return
+    print('Модель: ' + manifest['name'])
+    print('Сейчас: ' + Path(config['model']).name + '; язык: ' + config['language'])
+    print('Загрузка до 1,63 ГБ. Полная модель требует больше памяти, чем q5_0.')
+    print('Язык, микрофон и сочетания клавиш сохранятся. Оболочка не перезапускается.')
+    if input('Скачать, проверить и выбрать эту модель? [y/N] ').strip().lower() not in ('y', 'yes', 'д', 'да'):
+        return
+    MODELS.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix='.voice-update-', dir=MODELS) as tmp:
+        temp = Path(tmp)
+        paths = []
+        for item in manifest['files']:
+            path = MODELS / item['name']
+            if not valid(path, item):
+                if path.exists():
+                    raise ValueError(f'{path} отличается от выпуска; файл сохранён, обновление остановлено')
+                downloaded = temp / item['name']
+                print('Скачивание ' + item['name'], flush=True)
+                run(['curl', '--fail', '--location', '--retry', '3', '--connect-timeout', '20',
+                     '--proto', '=https', '--proto-redir', '=https', '-o', downloaded, item['url']])
+                if not valid(downloaded, item):
+                    raise ValueError('Контрольная сумма не совпала: ' + item['name'])
+                path = downloaded
+            paths.append(path)
+        # Serialise with recording/transcription, but only after lengthy downloads.
+        runtime = RUNTIME / 'hyprstack-dictation'
+        runtime.mkdir(parents=True, exist_ok=True)
+        with (runtime / 'lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            current = json.loads(run([DICTATION, 'status'], capture_output=True, text=True).stdout)
+            if current.get('state') in ('recording', 'transcribing'):
+                raise ValueError('Сначала завершите диктовку и повторите обновление')
+            config = settings()
+            original = CONFIG.read_bytes() if CONFIG.exists() else None
+            # Free the old model's memory before validating the new one.
+            run([DICTATION, 'server-stop'], capture_output=True)
+            print('Проверка загрузки модели и VAD на этом компьютере…', flush=True)
+            smoke_test(*paths, config, temp)
+            if (CONFIG.read_bytes() if CONFIG.exists() else None) != original:
+                raise ValueError('Настройки изменились во время проверки; выбор модели сохранён без изменений')
+            for path, item in zip(paths, manifest['files']):
+                target = MODELS / item['name']
+                if path != target:
+                    os.replace(path, target)
+            # Save the exact prior configuration before the single atomic switch.
+            atomic(STATE / 'previous.json', json.dumps({'config': None if original is None else original.decode()}).encode())
+            updated = set_paths((original or b'').decode(), *(MODELS / f['name'] for f in manifest['files']))
+            atomic(CONFIG, updated.encode())
+            atomic(STATE / 'accepted', manifest['version'].encode())
+    print('Готово. Новая модель включится при следующей диктовке. Язык: ' + config['language'])
+    print('Откат: hyprstack-voice-update --rollback')
+
+
+def rollback():
+    previous = json.loads((STATE / 'previous.json').read_text())
+    if input('Вернуть настройки голосового ввода до обновления? [y/N] ').strip().lower() not in ('y', 'yes', 'д', 'да'):
+        return
+    runtime = RUNTIME / 'hyprstack-dictation'
+    runtime.mkdir(parents=True, exist_ok=True)
+    with (runtime / 'lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        current = json.loads(run([DICTATION, 'status'], capture_output=True, text=True).stdout)
+        if current.get('state') in ('recording', 'transcribing'):
+            raise ValueError('Сначала завершите диктовку')
+        if previous['config'] is None:
+            CONFIG.unlink(missing_ok=True)
+        else:
+            atomic(CONFIG, previous['config'].encode())
+    print('Прежние настройки возвращены; модель сменится при следующей диктовке.')
+
+
+def notify(manifest):
+    if not pending(manifest, settings()):
+        return
+    # Once per login/version, including dismissal. A reboot offers it again.
+    asked = RUNTIME / 'hyprstack-voice-offered'
+    if asked.exists() and asked.read_text() == manifest['version']:
+        return
+    if subprocess.run(['busctl', '--user', 'status', 'org.freedesktop.Notifications'],
+                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode:
+        return
+    atomic(asked, manifest['version'].encode())
+    result = run(['notify-send', '-a', 'HyperStack', '-i', 'audio-input-microphone', '-t', '0',
+                  '-A', 'update=Обновить модель', '-A', 'later=Позже',
+                  'Доступна модель голосового ввода',
+                  manifest['name'] + '\nДо 1,63 ГБ. Язык сохранится. Установка только после подтверждения.'],
+                 capture_output=True, text=True, timeout=600)
+    if result.stdout.strip() == 'update':
+        terminal = next((shutil.which(t) for t in (os.environ.get('TERMINAL', ''), 'kitty', 'foot',
+                        'alacritty', 'konsole', 'xterm') if t and shutil.which(t)), None)
+        if not terminal:
+            raise ValueError('Не найден терминал. Выполните: hyprstack-voice-update --install')
+        # Close inherited locks; the terminal may fork into an existing process.
+        run([terminal, '-e', str(Path(__file__).resolve()), '--install'], close_fds=True)
+    atomic(asked, manifest['version'].encode())
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    group = parser.add_mutually_exclusive_group(required=True)
+    for flag in ('install', 'notify', 'status', 'rollback'):
+        group.add_argument('--' + flag, action='store_true')
+    args = parser.parse_args()
+    STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        with (STATE / ('notify.lock' if args.notify else 'update.lock')).open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            manifest = json.loads(MANIFEST.read_text())
+            if args.notify:
+                notify(manifest)
+            elif args.status:
+                config = settings()
+                print(json.dumps({'available': manifest['name'], 'current': config['model'],
+                                  'language': config['language'], 'pending': pending(manifest, config)}, ensure_ascii=False))
+            else:
+                # Prevent a shell install from replacing the config during a model update.
+                with (STATE.parent / 'install.lock').open('a') as install_lock:
+                    fcntl.flock(install_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    if (STATE.parent / 'pending-update.json').exists():
+                        raise ValueError('Сначала подтвердите обновление оболочки или дождитесь автоотката')
+                    rollback() if args.rollback else install(manifest)
+    except (OSError, ValueError, KeyError, EOFError, subprocess.SubprocessError) as error:
+        print('Обновление модели не завершено: ' + str(error), file=sys.stderr)
+        if args.notify:
+            subprocess.run(['notify-send', '-a', 'HyperStack', 'Обновление модели',
+                            'Не удалось открыть обновление. Команда: hyprstack-voice-update --install'])
+        return 1
+    finally:
+        if args.install or args.rollback:
+            try:
+                input('Нажмите Enter, чтобы закрыть окно…')
+            except EOFError:
+                pass
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

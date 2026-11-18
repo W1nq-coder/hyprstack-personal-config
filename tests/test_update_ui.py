@@ -57,6 +57,11 @@ class UpdateTest(unittest.TestCase):
         result = subprocess.run(['bash', str(UI)], input=answer, text=True, capture_output=True, env=env)
         return repo, root, state, git, base, target, before, result
 
+    def test_closed_input_never_approves_clean_update(self):
+        repo, root, state, git, base, target, before, result = self.scenario('', dirty=False)
+        self.assertEqual(git('rev-parse', 'HEAD'), base)
+        self.assertFalse((root / 'installed').exists())
+
     def test_dirty_update_saves_staged_unstaged_and_new_files(self):
         repo, root, state, git, base, target, before, result = self.scenario('yyx')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

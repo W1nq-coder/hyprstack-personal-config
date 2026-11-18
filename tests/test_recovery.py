@@ -89,6 +89,14 @@ class RecoveryTest(unittest.TestCase):
         (self.overlay / 'added.qml').write_text('changed')
         self.run_tool('unchanged', '--archive', str(archive), success=False)
 
+    def test_helper_update_does_not_require_shell_restart(self):
+        archive = self.snapshot()
+        self.helper.write_text('new helper')
+        self.run_tool('unchanged', '--archive', str(archive), success=False)
+        self.run_tool('shell-unchanged', '--archive', str(archive))
+        (self.config / 'local.lua').write_text('changed compositor settings')
+        self.run_tool('shell-unchanged', '--archive', str(archive), success=False)
+
     def test_keep_two_verified_snapshots(self):
         first = self.snapshot()
         second = self.snapshot()
@@ -155,6 +163,8 @@ class InstallRecoveryTest(unittest.TestCase):
             tool = repo / 'home/.local/bin/hyprstack-rollback'
             tool.parent.mkdir(parents=True)
             tool.write_bytes(TOOL.read_bytes())
+            guard = tool.with_name('hyprstack-update-guard')
+            guard.write_bytes((ROOT / 'home/.local/bin/hyprstack-update-guard').read_bytes())
             night = tool.with_name('nightlight')
             night.write_text('#!/bin/sh\nexit 0\n')
             night.chmod(0o755)
@@ -162,7 +172,7 @@ class InstallRecoveryTest(unittest.TestCase):
             source = repo / 'home' / rel
             source.parent.mkdir(parents=True)
             source.write_text('new shell')
-            (repo / 'files.txt').write_text(rel + '\n.local/bin/nightlight\n')
+            (repo / 'files.txt').write_text(rel + '\n.local/bin/nightlight\n.local/bin/hyprstack-update-guard\n')
             subprocess.run(['git', 'init', '-b', 'main', str(repo)], check=True, capture_output=True)
             subprocess.run(['git', '-C', str(repo), 'add', '.'], check=True)
             subprocess.run(['git', '-C', str(repo), '-c', 'user.name=Test', '-c', 'user.email=test@example.invalid',
@@ -177,6 +187,7 @@ class InstallRecoveryTest(unittest.TestCase):
             bindir = home / 'bin'
             bindir.mkdir()
             stubs = {
+                'systemd-run': '#!/bin/sh\nexit 0\n',
                 'systemctl': '#!/bin/sh\necho "$*" >> "$HOME/service-calls"\n'
                              'if [ "$2" = restart ] && [ ! -e "$HOME/restart-failed" ]; then touch "$HOME/restart-failed"; exit 1; fi\nexit 0\n',
                 'hyprctl': '#!/bin/sh\nexit 0\n',

@@ -1,0 +1,8 @@
+[Unit]
+Description=Offer the verified HyperStack voice model update
+ConditionEnvironment=HYPRLAND_INSTANCE_SIGNATURE
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/hyprstack-voice-update --notify
+TimeoutStartSec=infinity

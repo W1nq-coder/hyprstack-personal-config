@@ -7,6 +7,10 @@ set -uo pipefail
 
 STATE=${XDG_STATE_HOME:-$HOME/.local/state}/hyprstack-personal
 mkdir -p "$STATE"
+# Recover an update interrupted by reboot before checking the network or notifications.
+if [[ -f $STATE/pending-update.json && -x $HOME/.local/bin/hyprstack-update-guard ]]; then
+    "$HOME/.local/bin/hyprstack-update-guard" recover || exit 1
+fi
 REPO=$(cat "$STATE/repo" 2>/dev/null) || exit 0
 [[ -d $REPO/.git ]] || exit 0
 

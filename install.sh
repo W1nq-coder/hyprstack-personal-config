@@ -21,6 +21,7 @@ PERSONAL=$DATA/hyprstack-personal/shell
 PERSONAL_REL=.local/share/hyprstack-personal/shell/
 BACKUP=${TMPDIR:-/tmp}/hyprstack-install-$$
 RECOVERY=""
+GUARD_TOKEN=""
 CHECK=0
 APPLY=1
 MINE=0
@@ -58,8 +59,13 @@ finish_install() {
         warn "Установка не завершилась. Возвращаю прежнюю оболочку."
         local restore_args=(--archive "$RECOVERY")
         ((APPLY)) || restore_args+=(--no-apply)
-        python3 "$HOME/.local/bin/hyprstack-rollback" "${restore_args[@]}" \
-            || warn "Автооткат не завершён. Выполните: hyprstack-rollback"
+        if [[ -n $GUARD_TOKEN ]]; then
+            python3 "$HOME/.local/bin/hyprstack-update-guard" rollback --token "$GUARD_TOKEN" \
+                || warn "Автооткат не завершён. Выполните: hyprstack-rollback"
+        else
+            python3 "$HOME/.local/bin/hyprstack-rollback" "${restore_args[@]}" \
+                || warn "Автооткат не завершён. Выполните: hyprstack-rollback"
+        fi
     fi
     [[ -d $BACKUP ]] && rm -rf -- "$BACKUP"
     exit "$result"
@@ -72,6 +78,10 @@ if ((!CHECK)); then
     flock -n 8 || { warn "Другая установка уже выполняется"; exit 1; }
     shell_unit=hyprstack.service
     systemctl --user cat hyprstack-session.service >/dev/null 2>&1 && shell_unit=hyprstack-session.service
+    if [[ -f $safety_state/pending-update.json ]]; then
+        warn "Предыдущее обновление ещё ожидает подтверждения или отката. Повторите после его завершения."
+        exit 1
+    fi
     # Use the service that actually owns the current shell when both names exist.
     qs_pid=$(pgrep -x qs | head -1 || true)
     if [[ -n $qs_pid ]]; then
@@ -194,6 +204,8 @@ while IFS= read -r entry; do
     path=${entry#"~ "}
     src=$REPO/home/$path dst=$HOME/$path
     [[ -f $src ]] || { warn "нет в репозитории: $path"; continue; }
+    # Выбор модели меняет только отдельное подтверждённое обновление голосового ввода.
+    [[ $path == .config/hyprstack-dictation/config && -e $dst ]] && continue
     # Личные настройки автора ставятся только с --personal.
     [[ $entry == "~ "* ]] && ((!MINE)) && continue
     if [[ -f $dst && ! -L $dst ]] && cmp -s "$src" "$dst"; then
@@ -230,7 +242,7 @@ if grep -q 'hl.dsp.group.lock_active()' "$keybinds_lua" 2>/dev/null; then
     fi
 fi
 [[ -n $RECOVERY ]] && echo "  резервная копия: $RECOVERY"
-for script in dictation nightlight hyprstack-personal-update hyprstack-personal-update-ui hyprstack-greeter-sync caelestia-session-start; do
+for script in hyprstack-voice-update dictation nightlight hyprstack-personal-update hyprstack-personal-update-ui hyprstack-greeter-sync caelestia-session-start; do
     [[ -f $HOME/.local/bin/$script ]] && do_ chmod +x "$HOME/.local/bin/$script"
 done
 
@@ -277,54 +289,8 @@ fi
 # ---------- 4. Модель распознавания речи и прочее ----------
 
 say "Голосовой ввод"
-models_dir=$HOME/.local/share/whisper-models
-# Видеопамять дискретной карты в МБ (NVIDIA или AMD); 0 — встроенная графика или нет данных.
-vram_mb() {
-    local mb=0 f
-    if command -v nvidia-smi >/dev/null; then
-        mb=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | sort -n | tail -n1)
-    fi
-    for f in /sys/class/drm/card*/device/mem_info_vram_total; do
-        [[ -r $f ]] && (($(<"$f") / 1048576 > ${mb:-0})) && mb=$(($(<"$f") / 1048576))
-    done
-    [[ $mb =~ ^[0-9]+$ ]] && echo "$mb" || echo 0
-}
-# fetch_model ФАЙЛ SHA256 URL — скачать только по https; подменённый или битый файл не ставится.
-fetch_model() {
-    local file=$models_dir/$1
-    mkdir -p "$models_dir"
-    if curl -L --fail --proto '=https' --proto-redir '=https' -o "$file.part" "$3" &&
-        [[ $(sha256sum < "$file.part" | cut -d' ' -f1) == "$2" ]]; then
-        mv "$file.part" "$file"
-    else
-        rm -f "$file.part"
-        warn "$1 не скачан или его контрольная сумма не совпала: файл удалён"
-    fi
-}
-# Контрольные суммы — из Hugging Face (LFS oid файлов).
-hf=https://huggingface.co/ggerganov/whisper.cpp/resolve/main
-if (($(vram_mb) >= 4000)); then
-    # Видеокарта с 4+ ГБ: turbo без сжатия, точнее. (Полная large-v3 проверена: чаще выдумывает текст.)
-    model=(ggml-large-v3-turbo.bin 1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69 "$hf/ggml-large-v3-turbo.bin" "large-v3-turbo, ~1,6 ГБ")
-else
-    # Встроенная графика: сжатая turbo, в 3 раза легче.
-    model=(ggml-large-v3-turbo-q5_0.bin 394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2 "$hf/ggml-large-v3-turbo-q5_0.bin" "large-v3-turbo-q5_0, ~550 МБ")
-fi
-vad=(ggml-silero-v6.2.0.bin 2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987
-    https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin "Silero VAD — вырезает тишину и шум, ~1 МБ")
-for m in model vad; do
-    declare -n item=$m
-    if [[ -f $models_dir/${item[0]} ]]; then
-        echo "  ${item[0]} на месте"
-        continue
-    fi
-    warn "Нет ${item[0]} (${item[3]}, с huggingface.co)"
-    if ((!CHECK)) && [[ -t 0 ]]; then
-        read -r -p "  Скачать сейчас? [y/N] " answer
-        [[ $answer == [yYдД]* ]] && fetch_model "${item[0]}" "${item[1]}" "${item[2]}"
-    fi
-    unset -n item
-done
+echo "  Модель обновляется отдельно, после подтверждения в уведомлении."
+echo "  Вручную: ~/.local/bin/hyprstack-voice-update --install"
 if ! grep -q -E '^\s*allow_remote_control' "$HOME/.config/kitty/kitty.conf" 2>/dev/null; then
     warn "В kitty выключено удалённое управление: текст будет печататься через wtype."
     echo "  Для вставки напрямую добавьте в ~/.config/kitty/kitty.conf:"
@@ -366,6 +332,7 @@ say "Применение"
 fallback=$HOME/.config/systemd/user/$shell_unit.d/90-fallback.conf
 [[ -f $fallback ]] && rm -f "$fallback" && echo "  снят аварийный запуск стандартной оболочки"
 systemctl --user daemon-reload
+systemctl --user enable --now hyprstack-voice-update.timer >/dev/null 2>&1 && echo "  уведомления о модели включены"
 systemctl --user enable --now hyprstack-nightlight-schedule.timer >/dev/null 2>&1 && echo "  таймер ночного режима включён"
 # Тема экрана входа (noctalia-greeter) следует за темой HyperStack.
 if [[ -x /usr/bin/noctalia-greeter-apply-appearance ]]; then
@@ -383,7 +350,12 @@ if [[ -x /usr/bin/noctalia-greeter-apply-appearance ]]; then
 fi
 systemctl --user enable hyprstack-personal-update.service >/dev/null 2>&1   # проверка сразу при входе
 systemctl --user enable --now hyprstack-personal-update.timer >/dev/null 2>&1 && echo "  проверка обновлений включена (раз в 2 минуты)"
+if [[ -n $RECOVERY ]] && python3 "$HOME/.local/bin/hyprstack-rollback" shell-unchanged --archive "$RECOVERY"; then
+    say "Готово: обновлены вспомогательные файлы; оболочка не требует перезапуска"
+    exit 0
+fi
 if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
+    GUARD_TOKEN=$(python3 "$HOME/.local/bin/hyprstack-update-guard" arm --archive "$RECOVERY")
     hyprctl reload >/dev/null && echo "  Hyprland перезагружен"
     errors=$(hyprctl configerrors 2>/dev/null | grep -v -i -E '^(no errors|ok)?$' || true)
     if [[ -n $errors ]]; then
@@ -401,7 +373,10 @@ if [[ -n ${HYPRLAND_INSTANCE_SIGNATURE:-} ]]; then
     if [[ $new_pid =~ ^[1-9][0-9]*$ && $new_pid != "$old_pid" ]] && systemctl --user is-active --quiet "$shell_unit" &&
         pgrep -f "qs --path $PERSONAL" >/dev/null &&
         ! journalctl --user -u "$shell_unit" --since "$since" --no-pager -o cat | grep -q -E 'ERROR|Failed to load'; then
-        echo "  оболочка перезапущена; ручной откат: ~/.local/bin/hyprstack-rollback"
+        echo "  Подтвердите в уведомлении, что панель и Dashboard работают (60 секунд)."
+        python3 "$HOME/.local/bin/hyprstack-update-guard" confirm --token "$GUARD_TOKEN" || exit 1
+        GUARD_TOKEN=""
+        echo "  оболочка проверена и подтверждена; ручной откат: ~/.local/bin/hyprstack-rollback"
     else
         warn "Оболочка с доработками не запустилась:"
         journalctl --user -u "$shell_unit" --since "$since" --no-pager -o cat | grep -E 'ERROR|caused' | head -6

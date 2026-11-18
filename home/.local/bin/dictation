@@ -393,10 +393,11 @@ config_json() {
             | {path: .[0], name: (.[0] | split("/")[-1] | sub("^ggml-"; "") | sub("\\.bin$"; "")), size: (.[1] | tonumber)}]')
     jq -n -c --arg mode "$MODE" --arg language "$LANGUAGE" --arg model "$MODEL" --arg source "$SOURCE" \
         --argjson sounds "$([[ $SOUNDS == 1 ]] && echo true || echo false)" \
+        --arg vadModel "$VAD_MODEL" --argjson useGpu "$([[ $USE_GPU == 1 ]] && echo true || echo false)" --argjson threads "$THREADS" \
         --argjson models "${models:-[]}" --argjson sources "$(sources_json || echo '[]')" \
         --arg defaultSource "$(default_source)" \
         '{mode: $mode, language: $language, model: $model, source: $source, sounds: $sounds,
-          models: $models, sources: ($sources // []), defaultSource: $defaultSource}'
+          vadModel: $vadModel, useGpu: $useGpu, threads: $threads, models: $models, sources: ($sources // []), defaultSource: $defaultSource}'
 }
 
 set_option() {

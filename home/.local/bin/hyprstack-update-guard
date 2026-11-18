@@ -1,0 +1,117 @@
+#!/usr/bin/env python3
+"""Revert an unconfirmed shell restart even if the installer/notification hangs."""
+import argparse
+import fcntl
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+import uuid
+
+STATE = Path(os.environ.get('XDG_STATE_HOME', Path.home() / '.local/state')) / 'hyprstack-personal'
+PENDING = STATE / 'pending-update.json'
+ROLLBACK = Path.home() / '.local/bin/hyprstack-rollback'
+
+
+def run(*args, **kwargs):
+    return subprocess.run(list(map(str, args)), check=True, **kwargs)
+
+
+def read():
+    return json.loads(PENDING.read_text()) if PENDING.exists() else None
+
+
+def cancel_timer(item):
+    subprocess.run(['systemctl', '--user', 'stop', item['unit'] + '.timer'],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+
+
+def arm(archive):
+    if read():
+        raise ValueError('Предыдущее обновление ещё не подтверждено')
+    if not Path(archive).is_file():
+        raise ValueError('Нет резервной копии для автоотката')
+    token = uuid.uuid4().hex
+    item = {'token': token, 'archive': str(Path(archive).resolve()),
+            'unit': 'hyprstack-update-guard-' + token, 'deadline': time.time() + 120}
+    temporary = PENDING.with_suffix('.tmp')
+    temporary.write_text(json.dumps(item))
+    os.replace(temporary, PENDING)
+    try:
+        run('systemd-run', '--user', '--quiet', '--collect', '--unit=' + item['unit'],
+            '--on-active=120s', '--timer-property=AccuracySec=1s',
+            sys.executable, Path(__file__).resolve(), 'rollback', '--token', token,
+            timeout=15)
+    except Exception:
+        PENDING.unlink(missing_ok=True)
+        raise
+    print(token)
+
+
+def restore(token=None, expired_only=False):
+    item = read()
+    if not item or (token and item['token'] != token):
+        return
+    if expired_only and time.time() < item['deadline']:
+        return
+    run(sys.executable, ROLLBACK, '--archive', item['archive'], timeout=90)
+    PENDING.unlink()
+    cancel_timer(item)
+
+
+def confirm(token):
+    # Do not hold the guard lock while waiting for user input: the independent timer must run.
+    try:
+        result = run('notify-send', '-a', 'HyperStack', '-i', 'dialog-question', '-u', 'critical',
+                     '-t', '60000', '-A', 'keep=Оставить обновление', '-A', 'undo=Вернуть назад',
+                     'Рабочий стол отображается правильно?',
+                     'Проверьте панель и Dashboard. Нажмите «Оставить обновление» за 60 секунд. '
+                     'Без подтверждения прежняя версия восстановится автоматически.',
+                     capture_output=True, text=True, timeout=60)
+        keep = result.stdout.strip() == 'keep'
+    except (OSError, subprocess.SubprocessError):
+        keep = False
+    with (STATE / 'guard.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        item = read()
+        if not item or item['token'] != token:
+            return False
+        if keep and time.time() < item['deadline']:
+            PENDING.unlink()
+            cancel_timer(item)
+            return True
+        restore(token)
+        return False
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('action', choices=['arm', 'confirm', 'rollback', 'recover'])
+    parser.add_argument('--archive')
+    parser.add_argument('--token')
+    args = parser.parse_args()
+    STATE.mkdir(parents=True, exist_ok=True)
+    os.umask(0o077)
+    try:
+        if args.action == 'confirm':
+            if not args.token:
+                parser.error('--token required')
+            return 0 if confirm(args.token) else 1
+        with (STATE / 'guard.lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            if args.action == 'arm':
+                if not args.archive:
+                    parser.error('--archive required')
+                arm(args.archive)
+            else:
+                restore(args.token, expired_only=args.action == 'recover')
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        print('Защита обновления: ' + str(error), file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

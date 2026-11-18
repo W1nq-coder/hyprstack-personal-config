@@ -1,0 +1,20 @@
+{
+  "version": "voice-2026-11-17",
+  "name": "Whisper large-v3-turbo + Silero VAD 6.2.0",
+  "files": [
+    {
+      "name": "ggml-large-v3-turbo.bin",
+      "sha256": "1fc70f774d38eb169993ac391eea357ef47c88757ef72ee5943879b7e8e2bc69",
+      "size": 1624555275,
+      "source": "https://huggingface.co/ggerganov/whisper.cpp",
+      "url": "https://github.com/W1nq-coder/hyprstack-personal-config/releases/download/voice-2026-11-17/ggml-large-v3-turbo.bin"
+    },
+    {
+      "name": "ggml-silero-v6.2.0.bin",
+      "sha256": "2aa269b785eeb53a82983a20501ddf7c1d9c48e33ab63a41391ac6c9f7fb6987",
+      "size": 885098,
+      "source": "https://huggingface.co/ggml-org/whisper-vad",
+      "url": "https://github.com/W1nq-coder/hyprstack-personal-config/releases/download/voice-2026-11-17/ggml-silero-v6.2.0.bin"
+    }
+  ]
+}
